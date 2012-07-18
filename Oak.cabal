@@ -1,0 +1,18 @@
+Name: oak
+Version: 0.0.1
+Author: Dmitry Matveev
+Maintainer: me@dmitrymatveev.co.uk
+License: BSD3
+License-file: LICENSE
+Synopsis: Abstract UI toolkit
+Description: Oak allows to build user interfaces in a declarative
+             way and to render it with the number of UI backends.
+
+Build-type: Simple
+cabal-version: >= 1.2
+
+library
+  build-depends: base >= 2.0, mtl, mutators
+
+  Exposed-modules: Graphics.UI.Oak,
+                   Graphics.UI.Oak.Basics
