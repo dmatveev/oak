@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell, GeneralizedNewtypeDeriving #-}
 
 module Graphics.UI.Oak
        (
@@ -8,6 +8,8 @@ module Graphics.UI.Oak
        , vbox
        , hbox
 
+       , runOak
+
          -- drop after debugging!
        , updateLayout
        , sizeHint
@@ -16,6 +18,8 @@ module Graphics.UI.Oak
 import Data.List (foldl', find)
 import Data.Mutators
 import Control.Monad (mapM, forM)
+import Control.Monad.State
+import Control.Monad.Trans
 
 import Graphics.UI.Oak.Basics
 
@@ -87,38 +91,38 @@ calcBoxLayout :: Eq idt
                  -> Int                                  -- base axis value
                  -> Int                                  -- available size element (divided between items)
                  -> (Size -> Int)                        -- counted size element accessor
-                 -> (Int -> Int -> Rect)                 -- rect builder functionx
+                 -> (Int -> Int -> Rect)                 -- rect builder function
                  -> [LayoutItem idt]
 calcBoxLayout items base availLen cntAcc buildRect = do
-    let rects = if find isExpanding items == Nothing
-                then
-                  -- No Expanding elements, divide the available area
-                  -- between the items
-                  let len = availLen `div` length items
-                      axs = [base, base + len..]
-                  in map (\offset -> buildRect offset len) axs
-                else
-                  -- Calculate size required for the items with the
-                  -- Minimum policy, divide the rest between the
-                  -- Expanding elements
-                  let mins = filter isMinimum items
-                      exps = filter isExpanding items
-                      rqLen = foldl' (\acL (_, sz, _) -> acL + cntAcc sz) 0 mins
-                      exLen = div (availLen - rqLen) $ length exps
-                      ols = reverse
-                            $ fst
-                            $ foldl' (accumOLs exLen) ([], base)
-                            $ items
-                  in map (\(offset, len) -> buildRect offset len) ols
+    let rects =
+          if find isExpanding items == Nothing
+          then
+            -- No Expanding elements, divide the available area
+            -- between the items
+            let len = availLen `div` length items
+                axs = [base, base + len..]
+            in map (\offset -> buildRect offset len) axs
+          else
+            -- Calculate size required for the items with the
+            -- Minimum policy, divide the rest between the
+            -- Expanding elements
+            let mins = filter isMinimum items
+                exps = filter isExpanding items
+                rqLen = foldl' (\acL (_, sz, _) -> acL + cntAcc sz) 0 mins
+                exLen = div (availLen - rqLen) $ length exps
+                ols = reverse
+                      $ fst
+                      $ foldl' (accumOLs exLen) ([], base)
+                      $ items
+            in map (\(offset, len) -> buildRect offset len) ols
       in map (\(rc, (li, _, _)) -> setRect li rc) $ zip rects items
-
   where
     isMinimum   (_, _, pcy) = pcy == Minimum
     isExpanding (_, _, pcy) = pcy == Expanding
 
-    accumOLs exLen (pls, offset) (_, sz, pcy) =
+    accumOLs exLen (ols, offset) (_, sz, pcy) =
       let len = if pcy == Expanding then exLen else cntAcc sz
-      in ((offset, len) : pls, offset + len)
+      in ((offset, len) : ols, offset + len)
 
 
 sizePolicy' :: LayoutItem idt -> (SizePolicy, SizePolicy)
@@ -163,3 +167,31 @@ updateLayout (HBox items) baseX baseY (Size availW availH) = do
   return $ HBox items'
 
 updateLayout w _ _ _ = return w
+
+
+
+
+data Display idt = Display {
+    root    :: Widget idt
+  , focused :: Maybe idt
+  } deriving (Eq, Show)
+
+
+newtype MonadFrontend m =>
+        OakT i m a = OakT (StateT (Display i) m a)
+                     deriving (Monad, MonadIO, MonadTrans)
+
+runOakT :: MonadFrontend m => OakT i m a -> Display i -> m a
+runOakT (OakT stt) d = evalStateT stt d
+
+
+oakMain :: MonadFrontend m => OakT i m ()
+oakMain = do
+  lift $ initialize
+  return ()
+
+
+runOak :: MonadFrontend m => Widget idt -> m ()
+runOak root = do
+  runOakT oakMain $ Display root Nothing
+  return ()
