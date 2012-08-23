@@ -4,6 +4,7 @@ module Graphics.UI.Oak
        (
          Widget(..)
        , Size(..)
+       , Font(..)
 
        , vbox
        , hbox
@@ -23,19 +24,6 @@ import Control.Monad.Trans
 
 import Graphics.UI.Oak.Basics
 
-data LayoutItem idt = LayoutItem {
-    name     :: idt
-  , widget   :: Widget idt
-  , rect     :: Rect
-  } deriving (Eq, Show)
-
-data Widget idt = VBox [LayoutItem idt]
-                | HBox [LayoutItem idt]
-                | Label String
-                | Button String
-                | Stretch
-                deriving (Eq, Show)
-
 
 genMutators ''LayoutItem
 
@@ -54,7 +42,7 @@ items = map (\(i, w) -> LayoutItem i w (Rect 0 0 (Size 0 0)))
 
 maxSize :: [Size] -> Size
 maxSize = foldl' maxSizeOf (Size 0 0)
-  where maxSizeOf (Size a b) (Size c d) = Size (max a b) (max c d)
+  where maxSizeOf (Size a b) (Size c d) = Size (max a c) (max b d)
 
 -- Returns a (vertical, horizontal) size policies
 sizePolicy :: Widget idt -> (SizePolicy, SizePolicy)
@@ -72,7 +60,7 @@ sizeHint Stretch = return $ Size 0 0
 
 sizeHint (VBox items) = do
   sizes <- mapM getSizeHint items
-  let (Size maxW _) = maxSize sizes
+  let sz@(Size maxW _) = maxSize sizes
       totalH = foldl' (\acc (Size _ h) -> acc + h) 0 sizes
   return $ Size maxW totalH
 
@@ -132,11 +120,10 @@ sizePolicy' (LayoutItem _ w _) = sizePolicy w
 updateLayouts :: (MonadSurface m, Eq idt)
                  => [LayoutItem idt]
                  -> m [LayoutItem idt]
-updateLayouts items = do
-  updated <- forM items $ \(LayoutItem i w rc@(Rect x y sz)) -> do
+updateLayouts items =
+  forM items $ \(LayoutItem i w rc@(Rect x y sz)) -> do
     w' <- updateLayout w x y sz
     return $ LayoutItem i w' rc
-  return updated
   
 
 updateLayout :: (MonadSurface m, Eq idt)
@@ -176,22 +163,55 @@ data Display idt = Display {
   , focused :: Maybe idt
   } deriving (Eq, Show)
 
+genMutators ''Display
 
 newtype MonadFrontend m =>
         OakT i m a = OakT (StateT (Display i) m a)
-                     deriving (Monad, MonadIO, MonadTrans)
+                     deriving ( Monad
+                              , MonadIO
+                              , MonadTrans
+                              , MonadState (Display i)
+                              )
 
 runOakT :: MonadFrontend m => OakT i m a -> Display i -> m a
 runOakT (OakT stt) d = evalStateT stt d
 
 
-oakMain :: MonadFrontend m => OakT i m ()
+repaint :: (MonadFrontend m, MonadSurface m) => OakT i m ()
+repaint = do
+  wgt <- gets root
+  sz <- lift $ surfSize
+  lift $ render wgt $ Rect 0 0 sz
+  
+
+eventLoop :: (MonadFrontend m, MonadSurface m) => OakT i m ()
+eventLoop = do
+  events <- lift $ getEvents
+  if any (== Quit) events
+    then return ()
+    else do repaint
+            lift endIter
+            eventLoop
+
+
+recalcLayout :: (MonadSurface m, Eq i, Show i) => OakT i m ()
+recalcLayout = do
+  thisRoot <- gets root
+  size <- lift $ surfSize
+  newRoot <- lift $ updateLayout thisRoot 0 0 size
+  modify $ \x -> setRoot x newRoot
+
+
+oakMain :: (MonadFrontend m, MonadSurface m, Eq i, Show i)
+           => OakT i m ()
 oakMain = do
   lift $ initialize
-  return ()
+  recalcLayout
+  l <- gets root
+  eventLoop
 
 
-runOak :: MonadFrontend m => Widget idt -> m ()
-runOak root = do
-  runOakT oakMain $ Display root Nothing
-  return ()
+runOak :: (MonadFrontend m, MonadSurface m, Eq idt, Show idt) =>
+          Widget idt -> m ()
+runOak root = runOakT oakMain $ Display root Nothing
+  

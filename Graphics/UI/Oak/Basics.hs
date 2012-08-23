@@ -19,10 +19,32 @@ data Rect = Rect {
   } deriving (Eq, Show)
 
 
+data Font = Font String Int
+            deriving (Eq, Show)
+
+data Event = Quit
+             deriving (Eq)
+
+data LayoutItem idt = LayoutItem {
+    name     :: idt
+  , widget   :: Widget idt
+  , rect     :: Rect
+  } deriving (Eq, Show)
+
+data Widget idt = VBox [LayoutItem idt]
+                | HBox [LayoutItem idt]
+                | Label String
+                | Button String
+                | Stretch
+                deriving (Eq, Show)
+
 class (Monad m) => MonadSurface m where
   textSize :: String -> m Size
   surfSize :: m Size
 
-  
 class (Monad m, MonadIO m) => MonadFrontend m where
   initialize :: m ()
+  getEvents :: m [Event]
+
+  render :: Widget idt -> Rect -> m ()
+  endIter :: m ()
