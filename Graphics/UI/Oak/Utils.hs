@@ -6,6 +6,11 @@ module Graphics.UI.Oak.Utils
        , prevBefore
 
        , mconcat
+
+         , Stack
+         , stack
+         , push
+         , pop
        ) where
 
 import Control.Monad (MonadPlus, mplus, mzero)
@@ -32,3 +37,17 @@ prevBefore a as = prevBefore' a (const True) as
 
 mconcat :: (MonadPlus m) => [m a] -> m a
 mconcat = foldl' mplus mzero
+
+
+newtype Stack a = Stack [a]
+                  deriving (Eq, Show)
+
+stack :: Stack a
+stack = Stack []
+
+push :: a -> Stack a -> Stack a
+push a (Stack as) = Stack (a : as)
+
+pop :: Stack a -> (Maybe a, Stack a)
+pop (Stack [])     = (Nothing, Stack [])
+pop (Stack (a:as)) = (Just a, Stack as)

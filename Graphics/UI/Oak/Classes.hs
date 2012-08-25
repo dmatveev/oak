@@ -26,3 +26,6 @@ class (Monad m, MonadIO m) => MonadFrontend m where
 
 class (Monad m, MonadIO m, Eq i) => MonadHandler i m | m -> i where
   alter :: i -> (Widget i -> Widget i) -> m ()
+  open :: Widget i -> m ()
+  back :: m ()
+  quit :: m ()

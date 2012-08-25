@@ -31,8 +31,10 @@ import Graphics.UI.Oak.Utils
 import Graphics.UI.Oak.Widgets
 
 data Display i = Display {
-    root     :: Widget i
-  , focused  :: Maybe i
+    root    :: Widget i
+  , layers  :: Stack (Widget i)
+  , running :: Bool
+  , focused :: Maybe i
   } deriving (Eq, Show)
 
 genMutators ''Display
@@ -53,15 +55,38 @@ instance MonadTrans (OakT i) where
 instance (MonadFrontend m, MonadSurface m, Eq i) =>
          MonadHandler i (OakT i m) where
   alter = alterOak
+  open = openOak
+  back = backOak
+  quit = quitOak
+
+withUpdate :: (MonadFrontend m, MonadSurface m, Eq i) =>
+              OakT i m a -> OakT i m ()
+withUpdate act = act >> recalcLayout >> fixFocus
 
 
 alterOak :: (MonadFrontend m, MonadSurface m, Eq i) =>
             i -> (Widget i -> Widget i) -> OakT i m ()
-alterOak i f = do
-  modify $ \s -> modRoot s $ updateInTree i f
-  recalcLayout
-  fixFocus
+alterOak i f = withUpdate $ modify $ \s -> modRoot s $ updateInTree i f
 
+
+openOak :: (MonadFrontend m, MonadSurface m, Eq i) =>
+           Widget i -> OakT i m ()
+openOak w = withUpdate $ do
+  thisRoot <- gets root
+  modify $ \s -> modLayers s $ push thisRoot
+  modify $ \s -> setRoot s w
+
+
+backOak :: (MonadFrontend m, MonadSurface m, Eq i) => OakT i m ()
+backOak = withUpdate $ do
+  st <- gets layers
+  let (mw, st') = pop st
+  modify $ \s -> setLayers s st'
+  maybe (return ()) (\w -> modify $ \s -> setRoot s w) mw
+
+
+quitOak :: (Monad m, MonadIO m) => OakT i m ()
+quitOak = modify $ \s -> setRunning s False
 
 runOakT :: MonadFrontend m =>
            OakT i m a -> Display i -> [Handler i m] -> m a
@@ -136,13 +161,16 @@ handlerFor i e = do handlers <- ask
 eventLoop :: (MonadFrontend m, MonadSurface m, Eq i) =>
              OakT i m ()
 eventLoop = do
-  events <- lift $ getEvents
-  if any (== Quit) events
+  running <- gets running
+  if not running
     then return ()
-    else do forM_ events processEvent
-            repaint
-            lift endIter
-            eventLoop
+    else do events <- lift $ getEvents
+            if any (== Quit) events
+              then return ()
+              else do forM_ events processEvent
+                      repaint
+                      lift endIter
+                      eventLoop
 
 
 focusedWidget :: (MonadFrontend m, Eq i) =>
@@ -181,13 +209,14 @@ fixFocus = do
 
 oakMain :: (MonadFrontend m, MonadSurface m, Eq i)
            => OakT i m ()
-oakMain = do
-  lift $ initialize
-  recalcLayout
-  fixFocus
-  eventLoop
+oakMain = withUpdate (lift $ initialize) >> eventLoop
 
 
 runOak :: (MonadFrontend m, MonadSurface m, Eq i) =>
           Widget i -> [Handler i m] -> m ()
-runOak root hs = runOakT oakMain (Display root Nothing) hs
+runOak wgt hs = runOakT oakMain disp hs
+  where disp = Display { root    = wgt
+                       , focused = Nothing
+                       , layers  = stack
+                       , running = True
+                       }
