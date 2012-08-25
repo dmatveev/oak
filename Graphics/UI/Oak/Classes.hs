@@ -1,7 +1,10 @@
+{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies #-}
+
 module Graphics.UI.Oak.Classes
        (
          MonadSurface(..)
        , MonadFrontend(..)
+       , MonadHandler(..)
        ) where
 
 import Control.Monad.Trans (MonadIO)
@@ -18,6 +21,8 @@ class (Monad m, MonadIO m) => MonadFrontend m where
   initialize :: m ()
   getEvents :: m [Event]
 
-  render :: Widget idt -> WidgetState -> Rect -> m ()
+  render :: Widget i -> WidgetState -> Rect -> m ()
   endIter :: m ()
 
+class (Monad m, MonadIO m, Eq i) => MonadHandler i m | m -> i where
+  alter :: i -> (Widget i -> Widget i) -> m ()

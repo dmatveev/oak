@@ -1,7 +1,11 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Graphics.UI.Oak.Internal.Tree
        (
          findFirst
        , lookupWidget
+
+       , updateInTree
 
        , genericNodesApply
        , nodesApply
@@ -10,31 +14,39 @@ module Graphics.UI.Oak.Internal.Tree
        , leafs
        ) where
 
+import Data.Mutators
+
 import Graphics.UI.Oak.Basics
 import Graphics.UI.Oak.Classes
 import Graphics.UI.Oak.Widgets
 import Graphics.UI.Oak.Utils (mconcat)
 
+genMutators ''LayoutItem
 
 findFirst :: (Widget i -> Bool) -> Widget i -> Maybe i
-findFirst p w = case w of
-    (HBox items) -> findIn items
-    (VBox items) -> findIn items
-    otherwise -> Nothing
+findFirst p w = findIn $ boxItems w
   where findIn items = mconcat $ map find $ map xtract items
         xtract litem = (name litem, widget litem)
         find (i, w) = if p w then Just i else findFirst p w
 
 
-lookupWidget :: (Eq i) => i -> Widget i -> Maybe (Widget i)
-lookupWidget i w = case w of
-    (HBox items) -> findIn items
-    (VBox items) -> findIn items
-    otherwise    -> Nothing
+lookupWidget :: Eq i => i -> Widget i -> Maybe (Widget i)
+lookupWidget i w = findIn $ boxItems w
   where findIn items = mconcat $ map find $ map xtract $ items
         xtract litem = (name litem, widget litem)
         find (i', w) = if i == i' then Just w else lookupWidget i w
 
+
+updateInTree :: Eq i =>
+                i -> (Widget i -> Widget i) -> Widget i -> Widget i
+updateInTree i f w = case w of
+    (HBox items) -> HBox $ map upd items
+    (VBox items) -> VBox $ map upd items
+    otherwise -> w
+  where upd li@(LayoutItem n wgt _)
+          | n == i    = modWidget li f
+          | isBox wgt = setWidget li $ updateInTree i f wgt
+          | otherwise = li       
 
 genericNodesApply :: ((i, Widget i) -> Bool)  -- filter predicate
                   -> ((i, Widget i) -> a)     -- transform function

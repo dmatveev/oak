@@ -17,7 +17,8 @@ data Rect = Rect {
 data Font = Font String Int
             deriving (Eq, Show)
 
-data Key = ArrowLeft | ArrowUp | ArrowDown | ArrowRight
+data Key = ArrowLeft | ArrowUp | ArrowDown | ArrowRight |
+           Return
            deriving (Eq, Show)
 
 data Event = Quit

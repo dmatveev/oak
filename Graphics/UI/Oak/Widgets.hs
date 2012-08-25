@@ -7,6 +7,7 @@ module Graphics.UI.Oak.Widgets
 
        , acceptsFocus
        , isBox
+       , boxItems
        , sizePolicy
 
        , vbox
@@ -45,6 +46,11 @@ isBox (HBox _) = True
 isBox (VBox _) = True
 isBox _        = False
 
+boxItems :: Widget i -> [LayoutItem i]
+boxItems (HBox is) = is
+boxItems (VBox is) = is
+boxItems _ = []
+
 acceptsFocus :: Widget i -> Bool
 acceptsFocus (VBox _)   = False
 acceptsFocus (HBox _)   = False
@@ -60,9 +66,5 @@ sizePolicy (Label _)  = (Minimum,   Minimum)
 sizePolicy (Button _) = (Minimum,   Minimum)
 sizePolicy Stretch    = (Expanding, Expanding)
 
-
-
 data WidgetState = Normal | Focused
                  deriving (Eq, Show)
-
-  

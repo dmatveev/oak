@@ -18,4 +18,4 @@ processFocus hr current root =
            filt (_, w) = acceptsFocus w && (not $ isBox w)
            func = if hr == NextFocus then nextAfter else prevBefore
        in (\c -> func c wgts) <$> current
-  else Nothing
+  else current

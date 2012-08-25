@@ -1,10 +1,14 @@
-{-# LANGUAGE TemplateHaskell, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell,
+             GeneralizedNewtypeDeriving,
+             MultiParamTypeClasses,
+             FlexibleInstances #-}
 
 module Graphics.UI.Oak
        (
          Widget(..)
        , Size(..)
        , Font(..)
+       , Handler
 
        , vbox
        , hbox
@@ -12,10 +16,10 @@ module Graphics.UI.Oak
        , runOak
        )where
 
-import Data.List (concatMap)
+import Data.List (concatMap, find)
 import Data.Mutators
 import Control.Monad (forM)
-import Control.Monad.State
+import Control.Monad.RWS
 import Control.Monad.Trans
 
 import Graphics.UI.Oak.Basics
@@ -26,23 +30,43 @@ import Graphics.UI.Oak.Internal.Tree
 import Graphics.UI.Oak.Utils
 import Graphics.UI.Oak.Widgets
 
-data Display idt = Display {
-    root    :: Widget idt
-  , focused :: Maybe idt
+data Display i = Display {
+    root     :: Widget i
+  , focused  :: Maybe i
   } deriving (Eq, Show)
 
 genMutators ''Display
 
 
-newtype OakT i m a = OakT (StateT (Display i) m a)
+newtype OakT i m a = OakT (RWST [Handler i m] () (Display i) m a)
                      deriving ( Monad
                               , MonadIO
-                              , MonadTrans
+                              , MonadReader [Handler i m]
                               , MonadState (Display i)
                               )
 
-runOakT :: MonadFrontend m => OakT i m a -> Display i -> m a
-runOakT (OakT stt) d = evalStateT stt d
+type Handler i m = (i, Event, OakT i m ())
+
+instance MonadTrans (OakT i) where
+  lift a = OakT (lift a)
+
+instance (MonadFrontend m, MonadSurface m, Eq i) =>
+         MonadHandler i (OakT i m) where
+  alter = alterOak
+
+
+alterOak :: (MonadFrontend m, MonadSurface m, Eq i) =>
+            i -> (Widget i -> Widget i) -> OakT i m ()
+alterOak i f = do
+  modify $ \s -> modRoot s $ updateInTree i f
+  recalcLayout
+  fixFocus
+
+
+runOakT :: MonadFrontend m =>
+           OakT i m a -> Display i -> [Handler i m] -> m a
+runOakT (OakT oak) d hs = let p = evalRWST oak hs d
+                          in liftM fst p
 
 
 renderBox :: (MonadFrontend m, MonadSurface m, Eq i) =>
@@ -69,30 +93,44 @@ repaint = do
   render' wgt Normal $ Rect 0 0 sz
 
 
+moveFocus :: (MonadFrontend m, Eq i) =>
+             HandleResult -> OakT i m ()
+moveFocus hr = do
+  cur <- gets focused
+  wgt <- gets root
+  setFocus $ processFocus hr cur wgt
+
+
 type KeyHandler i m a = i -> Key -> OakT i m a
 
-btnKeyHandler :: (MonadFrontend m) => KeyHandler i m HandleResult
-btnKeyHandler i k = return $
-  if k `elem` [ArrowLeft, ArrowUp]
-  then PrevFocus
-  else if (k `elem` [ArrowRight, ArrowDown])
-         then NextFocus
-         else NoResult      
+btnKeyHandler :: (MonadFrontend m, Eq i) => KeyHandler i m ()
+btnKeyHandler i k
+  | k `elem` [ArrowLeft, ArrowUp]    = moveFocus PrevFocus
+  | k `elem` [ArrowRight, ArrowDown] = moveFocus NextFocus
+  | otherwise = return ()
 
+
+runHandler :: MonadFrontend m => Handler i m -> OakT i m ()
+runHandler (_, _, f) = f
 
 handleKey :: (MonadFrontend m, Eq i) => Key -> OakT i m ()
 handleKey k = focusedWidget >>= maybe (return ()) dispatch
-  where dispatch (i, (Button s)) = do
-          res <- btnKeyHandler i k
-          cur <- gets focused
-          wgt <- gets root
-          modify $ \s -> setFocused s $ processFocus res cur wgt
+  where dispatch (i, w) = do
+          handler <- handlerFor i (KeyDown k)
+          maybe (btnKeyHandler i k) runHandler handler
 
 
 processEvent :: (MonadFrontend m, Eq i) => Event -> OakT i m ()
 processEvent e = case e of
   (KeyDown k) -> handleKey k
   otherwise   -> return ()
+
+
+handlerFor :: (Monad m, Eq i) =>
+              i -> Event -> OakT i m (Maybe (Handler i m))
+handlerFor i e = do handlers <- ask
+                    return $ find match handlers
+  where match (i', e', _) = i' == i && e' == e
 
 
 eventLoop :: (MonadFrontend m, MonadSurface m, Eq i) =>
@@ -117,7 +155,7 @@ focusedWidget = do current <- gets focused
                      return $ (i, w)
 
 
-recalcLayout :: (MonadSurface m, Eq i, Show i) => OakT i m ()
+recalcLayout :: (MonadSurface m, Eq i) => OakT i m ()
 recalcLayout = do
   thisRoot <- gets root
   size <- lift $ surfSize
@@ -125,16 +163,31 @@ recalcLayout = do
   modify $ \x -> setRoot x newRoot
 
 
-oakMain :: (MonadFrontend m, MonadSurface m, Eq i, Show i)
+setFocus :: MonadFrontend m => Maybe i -> OakT i m ()
+setFocus mi = modify $ \s -> setFocused s mi
+
+
+fixFocus :: (MonadFrontend m, Eq i) => OakT i m ()
+fixFocus = do
+    r <- gets root
+    f <- gets focused
+    case f of
+      (Just i) -> case (lookupWidget i r) of
+        (Just w) -> when (not $ acceptsFocus w) fallback
+        otherwise -> fallback
+      otherwise -> fallback 
+  where fallback = gets root >>= (setFocus . findFirst acceptsFocus)
+
+
+oakMain :: (MonadFrontend m, MonadSurface m, Eq i)
            => OakT i m ()
 oakMain = do
   lift $ initialize
   recalcLayout
-  r <- gets root
-  modify $ \s -> setFocused s $ findFirst acceptsFocus r
+  fixFocus
   eventLoop
 
 
-runOak :: (MonadFrontend m, MonadSurface m, Eq i, Show i) =>
-          Widget i -> m ()
-runOak root = runOakT oakMain $ Display root Nothing
+runOak :: (MonadFrontend m, MonadSurface m, Eq i) =>
+          Widget i -> [Handler i m] -> m ()
+runOak root hs = runOakT oakMain (Display root Nothing) hs
