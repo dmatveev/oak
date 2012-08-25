@@ -15,4 +15,11 @@ library
   build-depends: base >= 2.0, mtl, mutators
 
   Exposed-modules: Graphics.UI.Oak,
-                   Graphics.UI.Oak.Basics
+                   Graphics.UI.Oak.Basics,
+                   Graphics.UI.Oak.Classes
+                   Graphics.UI.Oak.Internal.Focus,
+                   Graphics.UI.Oak.Internal.Layout,
+                   Graphics.UI.Oak.Internal.Tree,
+                   Graphics.UI.Oak.Utils,
+                   Graphics.UI.Oak.Widgets
+
