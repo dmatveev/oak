@@ -23,7 +23,10 @@ data Key = ArrowLeft | ArrowUp | ArrowDown | ArrowRight |
 
 data Event = Quit
            | KeyDown Key
-             deriving (Eq)
+             deriving (Eq, Show)
+
+data Orientation = Horizontal | Vertical
+                   deriving (Eq, Show)
 
 data HandleResult = PrevFocus | NextFocus | NoResult
                     deriving (Eq, Show)                        

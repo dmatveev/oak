@@ -32,19 +32,23 @@ import Graphics.UI.Oak.Widgets
 
 data Display i = Display {
     root    :: Widget i
-  , layers  :: Stack (Widget i)
-  , running :: Bool
   , focused :: Maybe i
   } deriving (Eq, Show)
 
+data OakState i = OakState {
+    display :: Display i
+  , layers  :: Stack (Display i)
+  , running :: Bool
+  } deriving (Eq, Show)
+
 genMutators ''Display
+genMutators ''OakState
 
-
-newtype OakT i m a = OakT (RWST [Handler i m] () (Display i) m a)
+newtype OakT i m a = OakT (RWST [Handler i m] () (OakState i) m a)
                      deriving ( Monad
                               , MonadIO
                               , MonadReader [Handler i m]
-                              , MonadState (Display i)
+                              , MonadState (OakState i)
                               )
 
 type Handler i m = (i, Event, OakT i m ())
@@ -66,39 +70,44 @@ withUpdate act = act >> recalcLayout >> fixFocus
 
 alterOak :: (MonadFrontend m, MonadSurface m, Eq i) =>
             i -> (Widget i -> Widget i) -> OakT i m ()
-alterOak i f = withUpdate $ modify $ \s -> modRoot s $ updateInTree i f
+alterOak i f = withUpdate $
+               modify $ \s ->
+               modDisplay s $ \d ->
+               modRoot d $ updateInTree i f
 
 
 openOak :: (MonadFrontend m, MonadSurface m, Eq i) =>
            Widget i -> OakT i m ()
 openOak w = withUpdate $ do
-  thisRoot <- gets root
-  modify $ \s -> modLayers s $ push thisRoot
-  modify $ \s -> setRoot s w
+  thisDisp <- gets display
+  modify $ \s -> modLayers  s $ push thisDisp
+  modify $ \s -> setDisplay s $ Display w Nothing
 
 
 backOak :: (MonadFrontend m, MonadSurface m, Eq i) => OakT i m ()
 backOak = withUpdate $ do
-  st <- gets layers
-  let (mw, st') = pop st
-  modify $ \s -> setLayers s st'
-  maybe (return ()) (\w -> modify $ \s -> setRoot s w) mw
+    st <- gets layers
+    let (md, st') = pop st
+    modify $ \s -> setLayers s st'
+    maybe (return ()) (\d -> modify $ \s -> setDisplay s d) md
 
 
 quitOak :: (Monad m, MonadIO m) => OakT i m ()
 quitOak = modify $ \s -> setRunning s False
 
 runOakT :: MonadFrontend m =>
-           OakT i m a -> Display i -> [Handler i m] -> m a
-runOakT (OakT oak) d hs = let p = evalRWST oak hs d
+           OakT i m a -> OakState i -> [Handler i m] -> m a
+runOakT (OakT oak) s hs = let p = evalRWST oak hs s
                           in liftM fst p
 
 
 renderBox :: (MonadFrontend m, MonadSurface m, Eq i) =>
              [LayoutItem i] -> OakT i m ()
 renderBox is = do
-    f <- gets focused
-    forM_ is $ \(LayoutItem i w r) -> render' w (stFor i f) r
+    f <- gets (focused . display)
+    forM_ is $ \(LayoutItem i w r) -> case w of
+        (Compact cw) -> render' cw Normal      r
+        otherwise    -> render' w  (stFor i f) r
   where stFor i (Just f) = if i == f then Focused else Normal
         stFor _ Nothing  = Normal
 
@@ -111,9 +120,10 @@ render' w st rc = case w of
   otherwise -> lift $ render w st rc
 
 
-repaint :: (MonadFrontend m, MonadSurface m, Eq i) => OakT i m ()
+repaint :: (MonadFrontend m, MonadSurface m, Eq i)
+           => OakT i m ()
 repaint = do
-  wgt <- gets root
+  wgt <- gets (root . display)
   sz <- lift $ surfSize
   render' wgt Normal $ Rect 0 0 sz
 
@@ -121,9 +131,8 @@ repaint = do
 moveFocus :: (MonadFrontend m, Eq i) =>
              HandleResult -> OakT i m ()
 moveFocus hr = do
-  cur <- gets focused
-  wgt <- gets root
-  setFocus $ processFocus hr cur wgt
+  d <- gets display
+  setFocus $ processFocus hr (focused d) (root d)
 
 
 type KeyHandler i m a = i -> Key -> OakT i m a
@@ -175,9 +184,8 @@ eventLoop = do
 
 focusedWidget :: (MonadFrontend m, Eq i) =>
                  OakT i m (Maybe (i, Widget i))
-focusedWidget = do current <- gets focused
-                   rootWgt <- gets root
-                   return $ current @@ rootWgt
+focusedWidget = do d <- gets display
+                   return $ (focused d) @@ (root d)
   where mi @@ r = do i <- mi
                      w <- lookupWidget i r
                      return $ (i, w)
@@ -185,26 +193,26 @@ focusedWidget = do current <- gets focused
 
 recalcLayout :: (MonadSurface m, Eq i) => OakT i m ()
 recalcLayout = do
-  thisRoot <- gets root
+  thisRoot <- gets (root . display)
   size <- lift $ surfSize
   newRoot <- lift $ updateLayout thisRoot 0 0 size
-  modify $ \x -> setRoot x newRoot
+  modify $ \s -> modDisplay s $ \d -> setRoot d newRoot
 
 
 setFocus :: MonadFrontend m => Maybe i -> OakT i m ()
-setFocus mi = modify $ \s -> setFocused s mi
+setFocus mi = modify $ \s -> modDisplay s $ \d -> setFocused d mi
 
 
 fixFocus :: (MonadFrontend m, Eq i) => OakT i m ()
 fixFocus = do
-    r <- gets root
-    f <- gets focused
-    case f of
-      (Just i) -> case (lookupWidget i r) of
+    d <- gets display
+    case (focused d) of
+      (Just i) -> case lookupWidget i (root d) of
         (Just w) -> when (not $ acceptsFocus w) fallback
         otherwise -> fallback
       otherwise -> fallback 
-  where fallback = gets root >>= (setFocus . findFirst acceptsFocus)
+  where fallback = do r <- gets (root . display)
+                      setFocus $ findFirst acceptsFocus r
 
 
 oakMain :: (MonadFrontend m, MonadSurface m, Eq i)
@@ -214,9 +222,8 @@ oakMain = withUpdate (lift $ initialize) >> eventLoop
 
 runOak :: (MonadFrontend m, MonadSurface m, Eq i) =>
           Widget i -> [Handler i m] -> m ()
-runOak wgt hs = runOakT oakMain disp hs
-  where disp = Display { root    = wgt
-                       , focused = Nothing
-                       , layers  = stack
-                       , running = True
-                       }
+runOak wgt hs = runOakT oakMain st hs
+  where st = OakState { display = Display wgt Nothing
+                      , layers  = stack
+                      , running = True
+                      }

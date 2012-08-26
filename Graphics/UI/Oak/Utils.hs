@@ -7,10 +7,10 @@ module Graphics.UI.Oak.Utils
 
        , mconcat
 
-         , Stack
-         , stack
-         , push
-         , pop
+       , Stack
+       , stack
+       , push
+       , pop
        ) where
 
 import Control.Monad (MonadPlus, mplus, mzero)

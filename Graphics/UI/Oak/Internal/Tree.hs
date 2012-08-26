@@ -42,6 +42,7 @@ updateInTree :: Eq i =>
 updateInTree i f w = case w of
     (HBox items) -> HBox $ map upd items
     (VBox items) -> VBox $ map upd items
+    (Compact cw) -> Compact $ updateInTree i f cw
     otherwise -> w
   where upd li@(LayoutItem n wgt _)
           | n == i    = modWidget li f
@@ -52,10 +53,7 @@ genericNodesApply :: ((i, Widget i) -> Bool)  -- filter predicate
                   -> ((i, Widget i) -> a)     -- transform function
                   -> Widget i                 -- the root widget
                   -> [a]
-genericNodesApply p f wgt = case wgt of
-    (HBox items) -> concatMap (f' . xtract) items
-    (VBox items) -> concatMap (f' . xtract) items
-    otherwise    -> []
+genericNodesApply p f wgt = concatMap (f' . xtract) $ boxItems wgt
   where xtract litem = (name litem, widget litem)
         f' t@(_, w) = let tail = genericNodesApply p f w
                       in if p t then f t : tail else tail

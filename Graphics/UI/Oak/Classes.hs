@@ -12,7 +12,6 @@ import Control.Monad.Trans (MonadIO)
 import Graphics.UI.Oak.Basics (Size, Rect, Event)
 import Graphics.UI.Oak.Widgets (Widget, WidgetState)
 
-
 class (Monad m) => MonadSurface m where
   textSize :: String -> m Size
   surfSize :: m Size
