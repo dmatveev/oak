@@ -1,6 +1,7 @@
 module Graphics.UI.Oak.Widgets
        (
          Identifier(..)
+       , DialogIdentifier(..)
        , LayoutItem(..)
        , Widget(..)
        , WidgetState(..)
@@ -21,6 +22,7 @@ module Graphics.UI.Oak.Widgets
        , margin
 
        , header
+       , dialog
        ) where
 
 import Graphics.UI.Oak.Basics
@@ -28,6 +30,9 @@ import Graphics.UI.Oak.Basics
 
 class Identifier a where
   unused :: a
+
+class DialogIdentifier a where
+  backBtn :: a
 
 data LayoutItem idt = LayoutItem {
     name     :: idt
@@ -81,6 +86,20 @@ header :: Identifier i => String -> Widget i
 header s = Compact $ vbox [ (unused, Label s)
                           , (unused, Line 3)
                           ]
+
+dialog :: (Identifier i, DialogIdentifier i) =>
+          String -> (i, Widget i) -> Widget i
+dialog title contents =
+  margin 20 (unused,
+             vbox [ (unused, header title)
+                  , (unused, margin 10 contents)
+                  , (unused, hbox [ (backBtn, Button "Back"),
+                                    (unused, Stretch)
+                                  ]
+                    )
+                  ]
+            )
+
 
 isBox :: Widget i -> Bool
 isBox (HBox _) = True

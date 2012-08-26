@@ -6,7 +6,6 @@ module Graphics.UI.Oak.Internal.Layout
        ) where
 
 import Control.Monad (forM)
-import Control.Applicative ((<$>))
 import Data.Mutators
 import Data.List (foldl', find)
 
@@ -83,7 +82,7 @@ calcBoxLayout items base availLen cntAcc buildRect =
             let minlen  = (availLen - totalLen cntAcc fixs) `div` length mins
                 lensfcn = (\(_, sz, p) -> if p == Fixed then cntAcc sz else minlen)
                 lens    = map lensfcn items
-                axs     = (+ base) <$> scanl (+) 0 lens
+                axs     = scanl (+) base lens
             in map (\(offset, len) -> buildRect offset len) $ zip axs lens
           else
             -- Calculate size required for the items with the
