@@ -7,7 +7,7 @@ module Graphics.UI.Oak.Classes
        , MonadHandler(..)
        ) where
 
-import Control.Monad.Trans (MonadIO)
+import Control.Monad.Trans
 
 import Graphics.UI.Oak.Basics (Size, Rect, Event)
 import Graphics.UI.Oak.Widgets (Widget, WidgetState)
@@ -20,11 +20,13 @@ class (Monad m, MonadIO m) => MonadFrontend m where
   initialize :: m ()
   getEvents :: m [Event]
 
-  render :: Widget i -> WidgetState -> Rect -> m ()
+  render :: Widget i m -> WidgetState -> Rect -> m ()
   endIter :: m ()
 
-class (Monad m, MonadIO m, Eq i) => MonadHandler i m | m -> i where
-  alter :: i -> (Widget i -> Widget i) -> m ()
-  open :: Widget i -> m ()
-  back :: m ()
-  quit :: m ()
+class (Monad m, MonadIO m, Eq i) =>
+      MonadHandler i mh m | m -> i, m -> mh where
+  alter :: i -> (Widget i mh -> Widget i mh) -> m ()
+  open  :: Widget i mh -> m ()
+  back  :: m ()
+  quit  :: m ()
+  hlift :: mh a -> m a

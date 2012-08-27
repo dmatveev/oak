@@ -11,7 +11,8 @@ import Graphics.UI.Oak.Internal.Tree (genericNodesApply)
 import Graphics.UI.Oak.Utils (nextAfter, prevBefore)
 import Graphics.UI.Oak.Widgets (Widget, acceptsFocus, isBox)
 
-processFocus :: (Eq i) => HandleResult -> Maybe i -> Widget i -> Maybe i
+processFocus :: (Eq i, Monad m) =>
+                HandleResult -> Maybe i -> Widget i m -> Maybe i
 processFocus hr current root =
   if (hr == NextFocus || hr == PrevFocus)
   then let wgts = genericNodesApply filt fst root

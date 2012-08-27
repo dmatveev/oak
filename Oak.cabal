@@ -12,7 +12,7 @@ Build-type: Simple
 cabal-version: >= 1.2
 
 library
-  build-depends: base >= 2.0, mtl, mutators
+  build-depends: base >= 2.0, mtl, old-time, mutators
 
   Exposed-modules: Graphics.UI.Oak,
                    Graphics.UI.Oak.Basics,

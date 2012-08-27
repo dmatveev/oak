@@ -23,14 +23,14 @@ import Graphics.UI.Oak.Utils (mconcat)
 
 genMutators ''LayoutItem
 
-findFirst :: (Widget i -> Bool) -> Widget i -> Maybe i
+findFirst :: (Widget i m -> Bool) -> Widget i m -> Maybe i
 findFirst p w = findIn $ boxItems w
   where findIn items = mconcat $ map find $ map xtract items
         xtract litem = (name litem, widget litem)
         find (i, w) = if p w then Just i else findFirst p w
 
 
-lookupWidget :: Eq i => i -> Widget i -> Maybe (Widget i)
+lookupWidget :: Eq i => i -> Widget i m -> Maybe (Widget i m)
 lookupWidget i w = findIn $ boxItems w
   where findIn items = mconcat $ map find $ map xtract $ items
         xtract litem = (name litem, widget litem)
@@ -38,7 +38,7 @@ lookupWidget i w = findIn $ boxItems w
 
 
 updateInTree :: Eq i =>
-                i -> (Widget i -> Widget i) -> Widget i -> Widget i
+                i -> (Widget i m -> Widget i m) -> Widget i m -> Widget i m
 updateInTree i f w = case w of
     (HBox items) -> HBox $ map upd items
     (VBox items) -> VBox $ map upd items
@@ -49,9 +49,9 @@ updateInTree i f w = case w of
           | isBox wgt = setWidget li $ updateInTree i f wgt
           | otherwise = li       
 
-genericNodesApply :: ((i, Widget i) -> Bool)  -- filter predicate
-                  -> ((i, Widget i) -> a)     -- transform function
-                  -> Widget i                 -- the root widget
+genericNodesApply :: ((i, Widget i m) -> Bool)  -- filter predicate
+                  -> ((i, Widget i m) -> a)     -- transform function
+                  -> Widget i m                 -- the root widget
                   -> [a]
 genericNodesApply p f wgt = concatMap (f' . xtract) $ boxItems wgt
   where xtract litem = (name litem, widget litem)
@@ -59,17 +59,17 @@ genericNodesApply p f wgt = concatMap (f' . xtract) $ boxItems wgt
                       in if p t then f t : tail else tail
 
 
-nodesApply :: ((i, Widget i) -> a) -> Widget i -> [a]
+nodesApply :: ((i, Widget i m) -> a) -> Widget i m -> [a]
 nodesApply = genericNodesApply $ const True
 
 
-nodes :: Widget i -> [(i, Widget i)]
+nodes :: Widget i m -> [(i, Widget i m)]
 nodes = nodesApply id
 
 
-leafsApply :: ((i, Widget i) -> a) -> Widget i -> [a]
+leafsApply :: ((i, Widget i m) -> a) -> Widget i m -> [a]
 leafsApply = genericNodesApply (\(_, w) -> not $ isBox w)
 
 
-leafs :: Widget i -> [(i, Widget i)]
+leafs :: Widget i m -> [(i, Widget i m)]
 leafs = leafsApply id

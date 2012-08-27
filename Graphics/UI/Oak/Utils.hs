@@ -11,11 +11,14 @@ module Graphics.UI.Oak.Utils
        , stack
        , push
        , pop
+
+       , currentSeconds
        ) where
 
 import Control.Monad (MonadPlus, mplus, mzero)
 import Data.Maybe (fromMaybe)
 import Data.List (find, foldl')
+import System.Time (ClockTime(..), getClockTime)
 
 
 nextAfter' :: (Eq a) => a -> (a -> Bool) -> [a] -> a
@@ -51,3 +54,9 @@ push a (Stack as) = Stack (a : as)
 pop :: Stack a -> (Maybe a, Stack a)
 pop (Stack [])     = (Nothing, Stack [])
 pop (Stack (a:as)) = (Just a, Stack as)
+
+
+currentSeconds :: IO Integer
+currentSeconds = do
+  (TOD sec _) <- getClockTime
+  return sec
