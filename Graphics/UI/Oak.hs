@@ -12,17 +12,16 @@ module Graphics.UI.Oak
 
        , bindHandlers
 
-       , vbox
-       , hbox
-
        , call
+       , msgBox
 
        , runOak
        )where
 
 import Data.List (concatMap, find)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, fromMaybe)
 import Data.Mutators
+import Control.Applicative ((<$>))
 import Control.Monad (forM)
 import Control.Monad.RWS
 import Control.Monad.Trans
@@ -173,18 +172,18 @@ repaint = do
 
 
 moveFocus :: (MonadFrontend m, Eq i) =>
-             HandleResult -> OakT i w m ()
-moveFocus hr = do
+             (Maybe i -> Widget i m -> Maybe i) -> OakT i w m ()
+moveFocus f = do
   d <- gets display
-  setFocus $ processFocus hr (focused d) (root d)
+  setFocus $  f (focused d) (root d)
 
 
 type KeyHandler i w m a = i -> Key -> OakT i w m a
 
 btnKeyHandler :: (MonadFrontend m, Eq i) => KeyHandler i w m ()
 btnKeyHandler i k
-  | k `elem` [ArrowLeft, ArrowUp]    = moveFocus PrevFocus
-  | k `elem` [ArrowRight, ArrowDown] = moveFocus NextFocus
+  | k `elem` [ArrowLeft,  ArrowUp]   = moveFocus prevFocus
+  | k `elem` [ArrowRight, ArrowDown] = moveFocus nextFocus
   | otherwise = return ()
 
 
@@ -287,3 +286,38 @@ runOak wgt hs = runOakT oakMain st hs
                       , running = True
                       , ticks   = 0
                       }
+
+
+msgBox :: (MonadFrontend m, MonadSurface m) =>
+          String -> String -> [MessageCode] -> m (Maybe MessageCode)
+msgBox title text cs = call (messageBox title text cs) messageHandlers
+
+
+data MsgId = BtnOk | BtnYes | BtnNo | BtnCancel | Unused
+             deriving (Eq, Show)
+
+instance Identifier MsgId where
+  unused  = Unused
+  btnBack = BtnOk
+
+msgTable = [ (Ok,     (BtnOk,     "Ok"))
+           , (Yes,    (BtnYes,    "Yes"))
+           , (No,     (BtnNo,     "No"))
+           , (Cancel, (BtnCancel, "Cancel"))
+           ]
+
+idFor :: MessageCode -> MsgId
+idFor c = fromMaybe BtnOk $ fst <$> lookup c msgTable
+
+textFor :: MessageCode -> String
+textFor c = fromMaybe "Ok" $ snd <$> lookup c msgTable
+  
+messageBox :: String -> String -> [MessageCode] -> Widget MsgId m
+messageBox title text cs =
+    dialog title btns (unused, center (unused, Label text))
+  where btns = map (\c -> (idFor c, Button $ textFor c)) cs
+
+messageHandlers :: (MonadFrontend m, MonadSurface m) =>
+                   [(MsgId, Event, OakT MsgId MessageCode m ())]
+messageHandlers = map mkHandler msgTable
+   where mkHandler (c, (i, _)) = (i, KeyDown Return, answer c)

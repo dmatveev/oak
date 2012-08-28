@@ -19,6 +19,7 @@ data Font = Font String Int
 
 data Key = ArrowLeft | ArrowUp | ArrowDown | ArrowRight
            | SpaceKey
+           | F10
            | Return
              deriving (Eq, Show)
 
@@ -29,6 +30,3 @@ data Event = Quit
 
 data Orientation = Horizontal | Vertical
                    deriving (Eq, Show)
-
-data HandleResult = PrevFocus | NextFocus | NoResult
-                    deriving (Eq, Show)                        

@@ -1,7 +1,7 @@
 module Graphics.UI.Oak.Widgets
        (
          Identifier(..)
-       , DialogIdentifier(..)
+       , MessageCode(..)
 
        , WidgetBehavior(..)
          
@@ -32,10 +32,9 @@ import Graphics.UI.Oak.Basics
 
 
 class Identifier a where
-  unused :: a
+  unused    :: a
+  btnBack   :: a
 
-class DialogIdentifier a where
-  backBtn :: a
 
 data LayoutItem i m = LayoutItem {
     name     :: i
@@ -51,7 +50,7 @@ data (Monad m) => WidgetBehavior m = WidgetBehavior {
   }
 
 instance Show (WidgetBehavior m) where
-  show _ = "<# behavior>"
+  show _ = "<#behavior>"
 
 instance Eq (WidgetBehavior m) where
   _ == _ = False
@@ -69,6 +68,9 @@ data Widget i m = VBox [LayoutItem i m]
 
 data SizePolicy = Fixed | Minimum | Expanding
                   deriving (Eq, Show)
+
+data MessageCode = Ok | Yes | No | Cancel
+                   deriving (Eq)
 
 vbox :: [(i, Widget i m)] -> Widget i m
 vbox ws = VBox $ items ws
@@ -104,18 +106,19 @@ header s = Compact $ vbox [ (unused, Label s)
                           , (unused, Line 3)
                           ]
 
-dialog :: (Identifier i, DialogIdentifier i) =>
-          String -> (i, Widget i m) -> Widget i m
-dialog title contents =
+dialog :: Identifier i
+          => String
+          -> [(i, Widget i m)]
+          -> (i, Widget i m)
+          -> Widget i m
+dialog title buttons contents =
   margin 20 (unused,
              vbox [ (unused, header title)
                   , (unused, margin 10 contents)
-                  , (unused, hbox [ (backBtn, Button "Back"),
-                                    (unused, Stretch)
-                                  ]
-                    )
+                  , (unused, hbox $ buttons ++ [(unused, Stretch)])
                   ]
             )
+
 
 
 isBox :: Widget i m -> Bool
