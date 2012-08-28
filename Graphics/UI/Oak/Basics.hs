@@ -23,6 +23,7 @@ data Key = ArrowLeft | ArrowUp | ArrowDown | ArrowRight
              deriving (Eq, Show)
 
 data Event = Quit
+           | Live
            | KeyDown Key
              deriving (Eq, Show)
 

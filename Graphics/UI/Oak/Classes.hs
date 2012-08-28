@@ -24,9 +24,12 @@ class (Monad m, MonadIO m) => MonadFrontend m where
   endIter :: m ()
 
 class (Monad m, MonadIO m, Eq i) =>
-      MonadHandler i mh m | m -> i, m -> mh where
-  alter :: i -> (Widget i mh -> Widget i mh) -> m ()
-  open  :: Widget i mh -> m ()
-  back  :: m ()
-  quit  :: m ()
-  hlift :: mh a -> m a
+      MonadHandler i w mh m | m -> i, m -> mh, m -> w where
+  hlift  :: mh a -> m a
+  now    :: m Integer
+  alter  :: i -> (Widget i mh -> Widget i mh) -> m ()
+  open   :: Widget i mh -> m ()
+  answer :: w -> m ()
+  back   :: m ()
+  quit   :: m ()
+

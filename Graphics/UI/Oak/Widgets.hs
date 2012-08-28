@@ -48,7 +48,6 @@ data (Monad m) => WidgetBehavior m = WidgetBehavior {
   , sizePcyFcn  :: Orientation -> (SizePolicy, SizePolicy)
   , sizeHintFcn :: Orientation -> m Size
   , renderFcn   :: WidgetState -> Rect -> m ()
-  , liveFcn     :: Integer -> m ()
   }
 
 instance Show (WidgetBehavior m) where
