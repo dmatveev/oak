@@ -23,7 +23,7 @@ class (Monad m, MonadIO m) => MonadFrontend m where
   render :: Widget i m -> WidgetState -> Rect -> m ()
   endIter :: m ()
 
-class (Monad m, MonadIO m, Eq i) =>
+class (Monad m, MonadIO m, Eq i, Show i) =>
       MonadHandler i w mh m | m -> i, m -> mh, m -> w where
   hlift  :: mh a -> m a
   now    :: m Integer

@@ -5,7 +5,7 @@ module Graphics.UI.Oak.Internal.Layout
          updateLayout
        ) where
 
-import Control.Monad (forM)
+import Control.Monad (forM, liftM)
 import Data.Mutators
 import Data.List (foldl', find)
 
@@ -24,6 +24,8 @@ sizeHint :: (MonadSurface m) => Orientation -> Widget i m -> m Size
 sizeHint _ (Label s)  = textSize s
 sizeHint _ (Button s) = do sz <- textSize s
                            return $ increase sz 5 5
+sizeHint _ (Edit s _) = do sz <- textSize (if null s then " " else s)
+                           return $ increase sz 7 7
 
 sizeHint _ Stretch = return $ Size 0 0
 
@@ -140,6 +142,6 @@ updateLayout (HBox items) baseX baseY (Size availW availH) = do
   items' <- updateLayouts calcd
   return $ HBox items'
 
-updateLayout (Compact cw) x y sz = updateLayout cw x y sz
+updateLayout (Compact cw) x y sz = liftM Compact $ updateLayout cw x y sz
 
 updateLayout w _ _ _ = return w

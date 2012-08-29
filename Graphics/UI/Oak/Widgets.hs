@@ -59,6 +59,7 @@ data Widget i m = VBox [LayoutItem i m]
                 | HBox [LayoutItem i m]
                 | Label String
                 | Button String
+                | Edit String Int
                 | Stretch
                 | Space Int
                 | Line Int
@@ -122,9 +123,10 @@ dialog title buttons contents =
 
 
 isBox :: Widget i m -> Bool
-isBox (HBox _) = True
-isBox (VBox _) = True
-isBox _        = False
+isBox (HBox _)    = True
+isBox (VBox _)    = True
+isBox (Compact _) = True
+isBox _           = False
 
 boxItems :: Widget i m -> [LayoutItem i m]
 boxItems (HBox is) = is
@@ -135,8 +137,9 @@ boxItems _ = []
 acceptsFocus :: Monad m => Widget i m -> Bool
 acceptsFocus (VBox _)    = False
 acceptsFocus (HBox _)    = False
-acceptsFocus (Button _)  = True
 acceptsFocus (Label _)   = False
+acceptsFocus (Button _)  = True
+acceptsFocus (Edit _ _)  = True
 acceptsFocus (Space _)   = False
 acceptsFocus (Line _)    = False
 acceptsFocus Stretch     = False
@@ -150,6 +153,7 @@ sizePolicy _ (VBox _)    = (Expanding, Minimum)
 sizePolicy _ (HBox _)    = (Minimum,   Expanding)
 sizePolicy _ (Label _)   = (Minimum,   Minimum)
 sizePolicy _ (Button _)  = (Minimum,   Minimum)
+sizePolicy _ (Edit _ _ ) = (Minimum,   Expanding)
 sizePolicy o (Space _)   = flexiblePolicy o
 sizePolicy o (Line _)    = flexiblePolicy o
 sizePolicy _ Stretch     = (Expanding, Expanding)
