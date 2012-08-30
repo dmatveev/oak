@@ -380,7 +380,15 @@ inputDialog title text = dialog title btns (Unused, contents)
 inputBoxHandlers :: (MonadFrontend m, MonadSurface m) =>
                     [(MsgId, Event, OakT MsgId String m ())]
 inputBoxHandlers =
-  [ (BtnOk,     KeyDown Return, answer "")
-  , (EdtEntry,  KeyDown Return, answer "")
+  [ (BtnOk,     KeyDown Return, returnEnteredText)
+  , (EdtEntry,  KeyDown Return, returnEnteredText)
   , (BtnCancel, KeyDown Return, quit)
   ]
+
+returnEnteredText :: (MonadFrontend m, MonadSurface m) =>
+                     OakT MsgId String m ()
+returnEnteredText = do
+    r <- gets (root . display)
+    maybe quit process $ lookupWidget EdtEntry r
+  where process (Edit s _ ) = answer s
+        process _           = quit
