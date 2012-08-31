@@ -32,8 +32,14 @@ import Graphics.UI.Oak.Basics
 
 
 class Identifier a where
-  unused    :: a
-  btnBack   :: a
+  unused       :: a
+  btnBack      :: a
+
+  -- msgBtnOk     :: a
+  -- msgBtnYes    :: a
+  -- msgBtnNo     :: a
+  -- msgBtnCancel :: a
+  -- msgEdtEntry  :: a
 
 
 data LayoutItem i m = LayoutItem {

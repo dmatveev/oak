@@ -9,21 +9,26 @@ module Graphics.UI.Oak.Classes
 
 import Control.Monad.Trans
 
-import Graphics.UI.Oak.Basics (Size, Rect, Event)
-import Graphics.UI.Oak.Widgets (Widget, WidgetState)
+import Graphics.UI.Oak.Basics
+import Graphics.UI.Oak.Widgets
+import Graphics.UI.Oak.Utils (Stack)
+
 
 class (Monad m) => MonadSurface m where
   textSize :: String -> m Size
   surfSize :: m Size
 
-class (Monad m, MonadIO m) => MonadFrontend m where
+class (Monad m, MonadIO m) => MonadFrontend u m | m -> u where
   initialize :: m ()
   getEvents :: m [Event]
+  ownData :: m u
+
+  runFcn :: m (m a -> u -> IO (a, u))
 
   render :: Widget i m -> WidgetState -> Rect -> m ()
   endIter :: m ()
 
-class (Monad m, MonadIO m, Eq i, Show i) =>
+class (Monad m, MonadIO m, Identifier i, Eq i, Show i) =>
       MonadHandler i w mh m | m -> i, m -> mh, m -> w where
   hlift  :: mh a -> m a
   now    :: m Integer
@@ -33,3 +38,5 @@ class (Monad m, MonadIO m, Eq i, Show i) =>
   back   :: m ()
   quit   :: m ()
 
+  msgBox :: String -> String -> [MessageCode] -> m (Maybe MessageCode)
+  inputBox :: String -> String -> m (Maybe String)
