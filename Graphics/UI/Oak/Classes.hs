@@ -11,7 +11,6 @@ import Control.Monad.Trans
 
 import Graphics.UI.Oak.Basics
 import Graphics.UI.Oak.Widgets
-import Graphics.UI.Oak.Utils (Stack)
 
 
 class (Monad m) => MonadSurface m where
@@ -37,6 +36,8 @@ class (Monad m, MonadIO m, Identifier i, Eq i, Show i) =>
   answer :: w -> m ()
   back   :: m ()
   quit   :: m ()
+
+  lWidget :: i -> m (Maybe (Widget i mh))
 
   msgBox :: String -> String -> [MessageCode] -> m (Maybe MessageCode)
   inputBox :: String -> String -> m (Maybe String)

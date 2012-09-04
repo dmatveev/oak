@@ -1,29 +1,24 @@
 {-# LANGUAGE TemplateHaskell,
              GeneralizedNewtypeDeriving,
              MultiParamTypeClasses,
-             FlexibleInstances,
-             UndecidableInstances #-}
+             FlexibleInstances #-}
 
 module Graphics.UI.Oak
        (
          Widget(..)
        , Size(..)
        , Font(..)
-       , Handler
-       , OakState
 
        , bindHandlers
 
-       , initOak
-       , iterOak
+       , runOak
 
        , call
        )where
 
-import Data.List (concatMap, find)
+import Data.List (find)
 import Data.Maybe (isJust, fromMaybe)
 import Data.Mutators
-import Control.Applicative ((<$>))
 import Control.Monad (forM)
 import Control.Monad.RWS.Strict
 import Control.Monad.Trans
@@ -33,8 +28,10 @@ import Graphics.UI.Oak.Classes
 import Graphics.UI.Oak.Internal.Focus
 import Graphics.UI.Oak.Internal.Layout
 import Graphics.UI.Oak.Internal.Tree
+import Graphics.UI.Oak.Internal.Dialogs
 import Graphics.UI.Oak.Utils
 import Graphics.UI.Oak.Widgets
+
 
 
 data Display i m = Display {
@@ -54,22 +51,7 @@ genMutators ''Display
 genMutators ''OakState
 
 
-eventLoop :: (MonadSurface m, MonadFrontend u m,
-              Identifier i, Eq i, Show i) =>
-             (OakState i m, Maybe w) ->
-             [Handler i u w m] ->
-             u ->
-             (m (OakState i m, Maybe w) -> u -> IO ((OakState i m, Maybe w), u)) ->
-             IO (Maybe w)
-eventLoop (s, w) hs u r = do
-  ((s', w'), u') <- r (iterOak s hs) u
-  if not $ running s'
-    then return w'
-    else eventLoop (s', w') hs u' r
-  
-
 type Handler i u w m = (i, Event, OakT i u w m ())
-
 
 newtype OakT i u w m a =
   OakT (RWST [Handler i u w m] (Last w) (OakState i m) m a)
@@ -79,10 +61,6 @@ newtype OakT i u w m a =
            , MonadWriter (Last w)
            , MonadState (OakState i m)
            )
-
-
-bindHandlers :: i -> [(Event, OakT i u w m ())] -> [Handler i u w m]
-bindHandlers i hs = map (\(e, h) -> (i, e, h)) hs
 
 
 instance MonadTrans (OakT i u w) where
@@ -99,6 +77,8 @@ instance (MonadFrontend u m, MonadSurface m,
   back   = backOak
   quit   = quitOak
 
+  lWidget = lookupWidgetOak
+
   msgBox = msgBoxOak
   inputBox = inputBoxOak
 
@@ -113,12 +93,8 @@ nowOak :: (MonadFrontend u m, MonadSurface m, Eq i) =>
 nowOak = liftIO currentSeconds
 
 
-withUpdate :: (MonadFrontend u m, MonadSurface m, Eq i) =>
-              OakT i u w m a -> OakT i u w m ()
-withUpdate act = act >> recalcLayout >> fixFocus
-
-
-alterOak :: (MonadFrontend u m, MonadSurface m, Eq i, Show i) =>
+alterOak :: (MonadFrontend u m, MonadSurface m,
+             Identifier i, Eq i, Show i) =>
             i -> (Widget i m -> Widget i m) -> OakT i u w m ()
 alterOak i f = withUpdate $
                modify $ \s ->
@@ -126,7 +102,8 @@ alterOak i f = withUpdate $
                modRoot d $ updateInTree i f
 
 
-openOak :: (MonadFrontend u m, MonadSurface m, Eq i) =>
+openOak :: (MonadFrontend u m, MonadSurface m,
+            Identifier i, Eq i, Show i) =>
            Widget i m -> OakT i u w m ()
 openOak w = withUpdate $ do
   thisDisp <- gets display
@@ -134,50 +111,11 @@ openOak w = withUpdate $ do
   modify $ \s -> setDisplay s $ Display w Nothing
 
 
-oakCont :: (MonadFrontend u m, MonadSurface m,
-            Identifier i, Eq i, Show i)
-           => OakT i u w m ()
-oakCont = do
-  withUpdate $ return ()
-  st <- get
-  hs <- ask
-  u <- lift ownData
-  r <- lift runFcn
-  (_, w) <- listen (return ())
-  mnw <- liftIO $ eventLoop (st, getLast w) hs u r
-  tell $ Last mnw
-  return ()
- 
-
-callOak :: (MonadFrontend u m, MonadSurface m, Eq i, Show i,
-            Identifier oi, Eq oi, Show oi)
-           => Widget oi m
-           -> [Handler oi u ow m]
-           -> OakT i u w m (Maybe ow)
-callOak w hs = do
-    (_, w2) <- lift $ runOakT oakCont st hs
-    return w2
-  where st = OakState { display = Display w Nothing
-                      , layers  = stack
-                      , running = True
-                      }
-
-
--- call a b = undefined
--- call :: (MonadFrontend u m, MonadSurface m, Eq i, Show i) =>
---           Widget i m -> [Handler i u w m] -> m (Maybe w)
--- call _ _ = undefined
--- -- call wgt hs = liftM snd $ runOakT (withUpdate (return ()) >> eventLoop) st hs
--- --   where st = OakState { display = Display wgt Nothing
--- --                       , layers  = stack
--- --                       , running = True
--- --                       }
-
-
 answerOak :: (MonadFrontend u m, MonadSurface m,
               Identifier i, Eq i, Show i) =>
              w -> OakT i u w m ()
 answerOak w = tell (Last $ Just w) >> quit
+
 
 backOak :: (MonadFrontend u m, MonadSurface m,
             Identifier i, Eq i, Show i) =>
@@ -193,6 +131,81 @@ quitOak :: (Monad m, MonadIO m) => OakT i u w m ()
 quitOak = modify $ \s -> setRunning s False
 
 
+lookupWidgetOak :: (MonadFrontend u m, MonadSurface m,
+                    Identifier i, Eq i, Show i) =>
+                   i -> OakT i u w m (Maybe (Widget i m))
+lookupWidgetOak i = gets (root . display) >>=
+                    (return . lookupWidget i)
+
+
+msgBoxOak :: (MonadFrontend u m, MonadSurface m,
+              Identifier i, Eq i, Show i)
+          => String
+          -> String
+          -> [MessageCode]
+          -> OakT i u w m (Maybe MessageCode)
+msgBoxOak title text cs = callOak wgt messageBoxHandlers
+  where wgt = messageBox title text cs
+
+
+inputBoxOak :: (MonadFrontend u m, MonadSurface m,
+                Identifier i, Eq i, Show i) =>
+            String -> String -> OakT i u w m (Maybe String)
+inputBoxOak title text = callOak dlg inputDialogHandlers
+  where dlg = inputDialog title text
+
+
+type FrontRunFunc i u w m =
+  m (OakState i m, Maybe w)
+  -> u
+  -> IO ((OakState i m, Maybe w), u)
+
+eventLoop :: (MonadSurface m, MonadFrontend u m,
+              Identifier i, Eq i, Show i) =>
+             (OakState i m, Maybe w) ->
+             [Handler i u w m] ->
+             u ->
+             FrontRunFunc i u w m ->
+             IO (Maybe w)
+eventLoop (s, w) hs u r = do
+  ((s', w'), u') <- r (iterOak s hs) u
+  if not $ running s' then return w' else eventLoop (s', w') hs u' r
+
+
+oakCont :: (MonadFrontend u m, MonadSurface m,
+            Identifier i, Eq i, Show i)
+           => OakT i u w m ()
+oakCont = do
+  withUpdate $ return ()
+  st <- get
+  hs <- ask
+  u <- lift ownData
+  r <- lift runFcn
+  w <- liftM snd $ listen (return ())
+  mnw <- liftIO $ eventLoop (st, getLast w) hs u r
+  tell $ Last mnw
+  return ()
+
+
+callOak :: (MonadFrontend u m, MonadSurface m, Eq i, Show i,
+            Identifier oi, Eq oi, Show oi)
+           => Widget oi m
+           -> [Handler oi u ow m]
+           -> OakT i u w m (Maybe ow)
+callOak w hs = lift $ call w hs
+
+call :: (MonadFrontend u m, MonadSurface m,
+         Identifier i, Eq i, Show i)
+        => Widget i m
+        -> [Handler i u w m]
+        -> m (Maybe w)
+call w hs = liftM snd $ runOakT oakCont st hs
+  where st = OakState { display = Display w Nothing
+                      , layers  = stack
+                      , running = True
+                      }
+
+
 runOakT :: MonadFrontend u m
            => OakT i u w m a
            -> OakState i m
@@ -203,40 +216,46 @@ runOakT (OakT oak) s e = do
   return (st, getLast lw)
 
 
-renderBox :: (MonadFrontend u m, MonadSurface m, Eq i) =>
-             [LayoutItem i m] -> OakT i u w m ()
-renderBox is = do
-    f <- gets (focused . display)
-    forM_ is $ \(LayoutItem i w r) -> render' w  (stFor i f) r
-  where stFor i (Just f) = if i == f then Focused else Normal
-        stFor _ Nothing  = Normal
+runOak :: (MonadFrontend u m, MonadSurface m,
+           Identifier i, Eq i, Show i)
+          => Widget i m
+          -> [Handler i u w m]
+          -> m (OakState i m, Maybe w)
+runOak wgt hs = runOakT oakMain st hs
+  where oakMain = withUpdate (lift initialize) >> oakCont
+        st = OakState { display = Display wgt Nothing
+                      , layers  = stack
+                      , running = True
+                      }
 
 
-render' :: (MonadFrontend u m, MonadSurface m, Eq i) =>
-           Widget i m -> WidgetState -> Rect -> OakT i u w m ()
-render' w st rc@(Rect x y sz) = case w of
-  (VBox items) -> renderBox items
-  (HBox items) -> renderBox items
-  (Margin (l, t, r, b) w) ->
-    render' w st $ Rect (x + l) (y + t) (decrease sz (l + r) (t + b))
-  (Compact cw) -> render' cw Normal rc
-  (Custom bh)  -> lift $ renderFcn bh st rc
-  otherwise -> lift $ render w st rc
+iterOak :: (MonadFrontend u m, MonadSurface m,
+            Identifier i, Eq i, Show i)
+           => OakState i m
+           -> [Handler i u w m]
+           -> m (OakState i m, Maybe w)
+iterOak st hs = runOakT iteration st hs
+  where iteration = do mapM processEvent =<< lift getEvents
+                       live >> repaint >> lift endIter
+        live = handlersOn Live >>= mapM_ runHandler
 
 
-repaint :: (MonadFrontend u m, MonadSurface m, Eq i)
-           => OakT i u w m ()
-repaint = do
-  wgt <- gets (root . display)
-  sz <- lift $ surfSize
-  render' wgt Normal $ Rect 0 0 sz
+processEvent :: (MonadFrontend u m, MonadSurface m,
+                 Identifier i, Eq i, Show i) =>
+                Event -> OakT i u w m ()
+processEvent e = case e of
+  (KeyDown k) -> handleKey k
+  Quit        -> quit
+  otherwise   -> return ()
 
 
-moveFocus :: (MonadFrontend u m, Eq i) =>
-             (Maybe i -> Widget i m -> Maybe i) -> OakT i u w m ()
-moveFocus f = do
-  d <- gets display
-  setFocus $  f (focused d) (root d)
+handleKey :: (MonadFrontend u m, MonadSurface m,
+              Identifier i, Eq i, Show i) =>
+             Key -> OakT i u w m ()
+handleKey k = focusedWidget >>= maybe (return ()) dispatch
+  where dispatch (i, w) = do
+          handler <- handlerFor i (KeyDown k)
+          maybe (standardKeyHandler i k w) runHandler handler
 
 
 standardKeyHandler :: (MonadFrontend u m, MonadSurface m,
@@ -247,6 +266,7 @@ standardKeyHandler i k w = case w of
     (Edit s c) -> hkEdit i k s c
     otherwise  -> return ()
   
+
 hkButton :: (MonadFrontend u m, Eq i) => i -> Key -> OakT i u w m ()
 hkButton i k
   | k `elem` [ArrowLeft,  ArrowUp]        = moveFocus prevFocus
@@ -285,24 +305,15 @@ hkEdit i k text caret = case k of
         ins t c ch = let (p, s) = splitAt c t
                      in p ++ ch:s
 
-  
+ 
 runHandler :: (MonadFrontend u m, MonadSurface m) =>
               Handler i u w m -> OakT i u w m ()
 runHandler (_, _, f) = f
 
-handleKey :: (MonadFrontend u m, MonadSurface m,
-              Identifier i, Eq i, Show i) =>
-             Key -> OakT i u w m ()
-handleKey k = focusedWidget >>= maybe (return ()) dispatch
-  where dispatch (i, w) = do
-          handler <- handlerFor i (KeyDown k)
-          maybe (standardKeyHandler i k w) runHandler handler
-
 
 handlerFor :: (Monad m, Eq i) =>
               i -> Event -> OakT i u w m (Maybe (Handler i u w m))
-handlerFor i e = do handlers <- ask
-                    return $ find match handlers
+handlerFor i e = ask >>= (return . find match)
   where match (i', e', _) = i' == i && e' == e
 
 
@@ -316,35 +327,46 @@ handlersOn e = do
         onDisplay d (i, w, _) = isJust $ lookupWidget i $ root d
 
 
-processEvent :: (MonadFrontend u m, MonadSurface m,
-                 Identifier i, Eq i, Show i) =>
-                Event -> OakT i u w m ()
-processEvent e = case e of
-  (KeyDown k) -> handleKey k
-  Quit        -> quit
-  otherwise   -> return ()
+bindHandlers :: i -> [(Event, OakT i u w m ())] -> [Handler i u w m]
+bindHandlers i hs = map (\(e, h) -> (i, e, h)) hs
 
 
-live :: (MonadFrontend u m, MonadSurface m, Eq i) =>
-        OakT i u w m ()
-live = handlersOn Live >>= mapM_ runHandler
+renderBox :: (MonadFrontend u m, MonadSurface m, Eq i) =>
+             [LayoutItem i m] -> OakT i u w m ()
+renderBox is = do
+    f <- gets (focused . display)
+    forM_ is $ \(LayoutItem i w r) -> render' w  (stFor i f) r
+  where stFor i (Just f) = if i == f then Focused else Normal
+        stFor _ Nothing  = Normal
 
 
--- eventLoop :: (MonadFrontend u m, MonadSurface m, Eq i, Show i) =>
---              OakT i u w m ()
--- eventLoop = do
---   running <- gets running
---   if not running
---     then return ()
---     else do mapM processEvent =<< lift getEvents
---             live >> repaint >> lift endIter
---             eventLoop
+render' :: (MonadFrontend u m, MonadSurface m, Eq i) =>
+           Widget i m -> WidgetState -> Rect -> OakT i u w m ()
+render' w st rc = case w of
+  (VBox items)  -> renderBox items
+  (HBox items)  -> renderBox items
+  (Margin mr w) -> render' w st $ nadjust rc mr
+  (Compact cw)  -> render' cw Normal rc
+  (Custom bh)   -> lift $ renderFcn bh st rc
+  otherwise     -> lift $ render w st rc
 
-eventLoopIteration :: (MonadFrontend u m, MonadSurface m,
-                       Identifier i, Eq i, Show i) =>
-                      OakT i u w m ()
-eventLoopIteration = do mapM processEvent =<< lift getEvents
-                        live >> repaint >> lift endIter
+
+repaint :: (MonadFrontend u m, MonadSurface m, Eq i)
+           => OakT i u w m ()
+repaint = do
+  wgt <- gets (root . display)
+  sz <- lift surfSize
+  render' wgt Normal $ Rect 0 0 sz
+
+
+moveFocus :: (MonadFrontend u m, Eq i) =>
+             (Maybe i -> Widget i m -> Maybe i) -> OakT i u w m ()
+moveFocus f = do d <- gets display
+                 setFocus $ f (focused d) (root d)
+
+
+setFocus :: MonadFrontend u m => Maybe i -> OakT i u w m ()
+setFocus mi = modify $ \s -> modDisplay s $ \d -> setFocused d mi
 
 
 focusedWidget :: (MonadFrontend u m, Eq i) =>
@@ -356,6 +378,16 @@ focusedWidget = do d <- gets display
                      return $ (i, w)
 
 
+fixFocus :: (MonadFrontend u m, MonadSurface m,
+             Identifier i, Eq i, Show i) =>
+            OakT i u w m ()
+fixFocus = gets display >>= (maybe fallback procI . focused)
+  where procI i = lWidget i >>= maybe fallback procW
+        procW w = when (not $ acceptsFocus w) fallback
+        fallback = gets (root . display) >>=
+                   (setFocus . findFirst acceptsFocus)
+
+
 recalcLayout :: (MonadSurface m, Eq i) => OakT i u w m ()
 recalcLayout = do
   thisRoot <- gets (root . display)
@@ -364,133 +396,7 @@ recalcLayout = do
   modify $ \s -> modDisplay s $ \d -> setRoot d newRoot
 
 
-setFocus :: MonadFrontend u m => Maybe i -> OakT i u w m ()
-setFocus mi = modify $ \s -> modDisplay s $ \d -> setFocused d mi
-
-
-fixFocus :: (MonadFrontend u m, Eq i) => OakT i u w m ()
-fixFocus = do
-    d <- gets display
-    case (focused d) of
-      (Just i) -> case lookupWidget i (root d) of
-        (Just w) -> when (not $ acceptsFocus w) fallback
-        otherwise -> fallback
-      otherwise -> fallback 
-  where fallback = do r <- gets (root . display)
-                      setFocus $ findFirst acceptsFocus r
-
-
-oakMain :: (MonadFrontend u m, MonadSurface m,
-            Identifier i, Eq i, Show i)
-           => OakT i u w m ()
-oakMain = withUpdate (lift initialize) >> oakCont
-  
- 
-
-initOak :: (MonadFrontend u m, MonadSurface m,
-            Identifier i, Eq i, Show i)
-           => Widget i m
-           -> [Handler i u w m]
-           -> m (OakState i m, Maybe w)
-initOak wgt hs = runOakT oakMain st hs
-  where st = OakState { display = Display wgt Nothing
-                      , layers  = stack
-                      , running = True
-                      }
-
-iterOak :: (MonadFrontend u m, MonadSurface m,
-            Identifier i, Eq i, Show i)
-           => OakState i m
-           -> [Handler i u w m]
-           -> m (OakState i m, Maybe w)
-iterOak st hs = runOakT eventLoopIteration st hs
-
-
-data MsgId = BtnOk | BtnYes | BtnNo | BtnCancel | EdtEntry
-           | Unused
-             deriving (Eq, Show)
-
-instance Identifier MsgId where
-  unused = Unused
-  btnBack = BtnOk
-
-
-msgBoxOak :: (MonadFrontend u m, MonadSurface m,
-              Identifier i, Eq i, Show i)
-          => String
-          -> String
-          -> [MessageCode]
-          -> OakT i u w m (Maybe MessageCode)
-msgBoxOak title text cs = callOak wgt messageHandlers
-  where wgt = messageBox title text cs
-
-
-inputBoxOak :: (MonadFrontend u m, MonadSurface m,
-                Identifier i, Eq i, Show i) =>
-            String -> String -> OakT i u w m (Maybe String)
-inputBoxOak title text = callOak dlg inputBoxHandlers
-  where dlg = inputDialog title text
-
-
-msgTable = [ (Ok,     (BtnOk,     "Ok"))
-           , (Yes,    (BtnYes,    "Yes"))
-           , (No,     (BtnNo,     "No"))
-           , (Cancel, (BtnCancel, "Cancel"))
-           ]
-
-idFor :: MessageCode -> MsgId
-idFor c = fromMaybe BtnOk $ fst <$> lookup c msgTable
-
-textFor :: MessageCode -> String
-textFor c = fromMaybe "Ok" $ snd <$> lookup c msgTable
-  
-messageBox :: String -> String -> [MessageCode] -> Widget MsgId m
-messageBox title text cs =
-    dialog title btns (unused, center (unused, Label text))
-  where btns = map (\c -> (idFor c, Button $ textFor c)) cs
-
-messageHandlers :: (MonadFrontend u m, MonadSurface m) =>
-                   [(MsgId, Event, OakT MsgId u MessageCode m ())]
-messageHandlers = map mkHandler msgTable
-   where mkHandler (c, (i, _)) = (i, KeyDown Return, answer c)
-
-
-inputDialog :: String -> String -> Widget MsgId m
-inputDialog title text = dialog title btns (Unused, contents)
-  where contents = center (Unused, Compact $
-                           vbox [ (Unused,   Label text)
-                                , (EdtEntry, Edit "" 0)
-                                ]
-                          )
-        btns = map (\c -> (idFor c, Button $ textFor c)) cs
-        cs = [Ok, Cancel]
-
-inputBoxHandlers :: (MonadFrontend u m, MonadSurface m) =>
-                    [(MsgId, Event, OakT MsgId u String m ())]
-inputBoxHandlers =
-  [ (BtnOk,     KeyDown Return, returnEnteredText)
-  , (EdtEntry,  KeyDown Return, returnEnteredText)
-  , (BtnCancel, KeyDown Return, quit)
-  ]
-
-returnEnteredText :: (MonadFrontend u m, MonadSurface m) =>
-                     OakT MsgId u String m ()
-returnEnteredText = do
-    r <- gets (root . display)
-    maybe quit process $ lookupWidget EdtEntry r
-  where process (Edit s _ ) = answer s
-        process _           = quit
-
-
-call :: (MonadFrontend u m, MonadSurface m,
-            Identifier i, Eq i, Show i)
-           => Widget i m
-           -> [Handler i u w m]
-           -> m (Maybe w)
-call w hs = do
-    (_, w2) <- runOakT oakCont st hs
-    return w2
-  where st = OakState { display = Display w Nothing
-                      , layers  = stack
-                      , running = True
-                      }
+withUpdate :: (MonadFrontend u m, MonadSurface m,
+               Identifier i, Eq i, Show i) =>
+              OakT i u w m a -> OakT i u w m ()
+withUpdate act = act >> recalcLayout >> fixFocus

@@ -36,6 +36,9 @@ class Identifier a where
   btnBack      :: a
 
 
+data MessageCode = Ok | Yes | No | Cancel
+                   deriving (Eq, Show)
+
 data WidgetState = Normal | Focused
                    deriving (Eq, Show)
 
@@ -74,8 +77,6 @@ data Widget i m = VBox [LayoutItem i m]
 data SizePolicy = Fixed | Minimum | Expanding
                   deriving (Eq, Show)
 
-data MessageCode = Ok | Yes | No | Cancel
-                   deriving (Eq)
 
 vbox :: [(i, Widget i m)] -> Widget i m
 vbox ws = VBox $ items ws
@@ -86,13 +87,6 @@ hbox ws = HBox $ items ws
 items :: [(i, Widget i m)] -> [LayoutItem i m]
 items = map (\(i, w) -> LayoutItem i w (Rect 0 0 (Size 0 0)))
 
-
--- margin :: Identifier i => Int -> (i, Widget i m) -> Widget i m
--- margin r p = vbox [ spc
---                   , (unused, hbox [ spc, p, spc ])
---                   , spc
---                   ]
---   where spc = (unused, Space r)
 
 margin :: Identifier i => Int -> (i, Widget i m) -> Widget i m
 margin m (_, w) = Margin (m, m, m, m) w

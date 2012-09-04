@@ -15,8 +15,10 @@ import Graphics.UI.Oak.Widgets
 
 genMutators ''LayoutItem
 
-sizePolicy' :: Monad m =>
-               Orientation -> LayoutItem i m -> (SizePolicy, SizePolicy)
+sizePolicy' :: Monad m
+               => Orientation
+               -> LayoutItem i m
+               -> (SizePolicy, SizePolicy)
 sizePolicy' o (LayoutItem _ w _) = sizePolicy o w
 
 
@@ -26,7 +28,6 @@ sizeHint _ (Button s) = do sz <- textSize s
                            return $ increase sz 5 5
 sizeHint _ (Edit s _) = do sz <- textSize (if null s then " " else s)
                            return $ increase sz 7 7
-
 sizeHint _ Stretch = return $ Size 0 0
 
 sizeHint _ (VBox items) = do
@@ -61,23 +62,26 @@ maxSize = foldl' maxSz (Size 0 0)
   where maxSz (Size a b) (Size c d) = Size (max a c) (max b d)
 
 
-getSizeHint :: (MonadSurface m) => Orientation -> LayoutItem i m -> m Size
+getSizeHint :: (MonadSurface m) =>
+               Orientation -> LayoutItem i m -> m Size
 getSizeHint o (LayoutItem _ wgt _) = sizeHint o wgt
 
 
 is :: SizePolicy -> (LayoutItem i m, Size, SizePolicy) -> Bool
 is p (_, _, pcy) = pcy == p
 
-totalLen :: (Size -> Int) -> [(LayoutItem i m, Size, SizePolicy)] -> Int
+type LayoutData i m = (LayoutItem i m, Size, SizePolicy)
+
+totalLen :: (Size -> Int) -> [LayoutData i m] -> Int
 totalLen acc = foldl' cnt 0 where cnt t (_, sz, _) = t + acc sz
 
 
 calcBoxLayout :: Eq i
-                 => [(LayoutItem i m, Size, SizePolicy)] -- subject widgets and its data
-                 -> Int                                  -- base axis value
-                 -> Int                                  -- available size element
-                 -> (Size -> Int)                        -- counted size element accessor
-                 -> (Int -> Int -> Rect)                 -- rect builder function
+                 => [LayoutData i m]     -- subject widgets and its data
+                 -> Int                  -- base axis value
+                 -> Int                  -- available size element
+                 -> (Size -> Int)        -- counted size element accessor
+                 -> (Int -> Int -> Rect) -- rect builder function
                  -> [LayoutItem i m]
 calcBoxLayout items base availLen cntAcc buildRect =
     let fixs = filter (is Fixed)     items
@@ -99,10 +103,7 @@ calcBoxLayout items base availLen cntAcc buildRect =
             -- Expanding elements
             let rqLen = totalLen cntAcc $ mins ++ fixs
                 exLen = div (availLen - rqLen) $ length exps
-                ols = reverse
-                      $ fst
-                      $ foldl' (accumOLs exLen) ([], base)
-                      $ items
+                ols   = reverse $ fst $ foldl' (accumOLs exLen) ([], base) items
             in map (\(offset, len) -> buildRect offset len) ols
       in map (\(rc, (li, _, _)) -> setRect li rc) $ zip rects items
   where

@@ -20,6 +20,7 @@ library
                    Graphics.UI.Oak.Internal.Focus,
                    Graphics.UI.Oak.Internal.Layout,
                    Graphics.UI.Oak.Internal.Tree,
+                   Graphics.UI.Oak.Internal.Dialogs,
                    Graphics.UI.Oak.Utils,
                    Graphics.UI.Oak.Widgets
 
