@@ -44,6 +44,11 @@ sizeHint _ (HBox items) = do
 sizeHint o (Space s)   = return $ flexibleSize o s
 sizeHint o (Line n)    = return $ flexibleSize o n
 sizeHint o (Compact w) = sizeHint o w
+
+sizeHint o (Margin (l, t, r, b) w) = do
+  sh <- sizeHint o w
+  return $ increase sh (l + r) (t + b)
+
 sizeHint o (Custom bh) = sizeHintFcn bh o
 
 flexibleSize :: Orientation -> Int -> Size
@@ -143,5 +148,9 @@ updateLayout (HBox items) baseX baseY (Size availW availH) = do
   return $ HBox items'
 
 updateLayout (Compact cw) x y sz = liftM Compact $ updateLayout cw x y sz
+
+updateLayout (Margin m@(l, t, r, b) w) x y sz = do
+  let newSize = decrease sz (l + r) (t + b)
+  liftM (Margin m) $ updateLayout w (x + l) (y + t) newSize
 
 updateLayout w _ _ _ = return w

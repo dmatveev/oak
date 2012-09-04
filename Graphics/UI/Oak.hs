@@ -207,18 +207,19 @@ renderBox :: (MonadFrontend u m, MonadSurface m, Eq i) =>
              [LayoutItem i m] -> OakT i u w m ()
 renderBox is = do
     f <- gets (focused . display)
-    forM_ is $ \(LayoutItem i w r) -> case w of
-        (Compact cw) -> render' cw Normal      r
-        otherwise    -> render' w  (stFor i f) r
+    forM_ is $ \(LayoutItem i w r) -> render' w  (stFor i f) r
   where stFor i (Just f) = if i == f then Focused else Normal
         stFor _ Nothing  = Normal
 
 
 render' :: (MonadFrontend u m, MonadSurface m, Eq i) =>
            Widget i m -> WidgetState -> Rect -> OakT i u w m ()
-render' w st rc = case w of
+render' w st rc@(Rect x y sz) = case w of
   (VBox items) -> renderBox items
   (HBox items) -> renderBox items
+  (Margin (l, t, r, b) w) ->
+    render' w st $ Rect (x + l) (y + t) (decrease sz (l + r) (t + b))
+  (Compact cw) -> render' cw Normal rc
   (Custom bh)  -> lift $ renderFcn bh st rc
   otherwise -> lift $ render w st rc
 
