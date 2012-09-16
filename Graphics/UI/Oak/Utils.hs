@@ -13,9 +13,13 @@ module Graphics.UI.Oak.Utils
        , pop
 
        , currentSeconds
+
+       , mapmap
+       , mapmapM
+       , for
        ) where
 
-import Control.Monad (MonadPlus, mplus, mzero)
+import Control.Monad (MonadPlus, mplus, mzero, mapM)
 import Data.Maybe (fromMaybe)
 import Data.List (find, foldl')
 import System.Time (ClockTime(..), getClockTime)
@@ -60,3 +64,13 @@ currentSeconds :: IO Integer
 currentSeconds = do
   (TOD sec _) <- getClockTime
   return sec
+
+
+mapmap :: (a -> b) -> [[a]] -> [[b]]
+mapmap f = map (map f)
+
+mapmapM :: Monad m => (a -> m b) -> [[a]] -> m [[b]]
+mapmapM f = mapM (mapM f)
+
+for :: [a] -> (a -> b) -> [b]
+for = flip map

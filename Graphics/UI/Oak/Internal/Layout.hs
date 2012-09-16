@@ -7,11 +7,12 @@ module Graphics.UI.Oak.Internal.Layout
 
 import Control.Monad (forM, liftM)
 import Data.Mutators
-import Data.List (foldl', find)
+import Data.List (foldl', find, transpose)
 
 import Graphics.UI.Oak.Basics
 import Graphics.UI.Oak.Classes
 import Graphics.UI.Oak.Widgets
+import Graphics.UI.Oak.Utils (mapmap, mapmapM, for)
 
 genMutators ''LayoutItem
 
@@ -42,15 +43,22 @@ sizeHint _ (HBox items) = do
       totalW = foldl' (\acc (Size w _) -> acc + w) 0 sizes
   return $ Size totalW maxH
 
-sizeHint o (Space s)   = return $ flexibleSize o s
-sizeHint o (Line n)    = return $ flexibleSize o n
-sizeHint o (Compact w) = sizeHint o w
+sizeHint o (Table iss) = do
+  sizes <- mapM (mapM $ getSizeHint o) iss
+  let widths  = map (sum . map szWidth)  sizes
+      heights = map (sum . map szHeight) $ transpose sizes
+  return $ Size (maximum widths) (maximum heights)
+
+sizeHint o (Space s)          = return $ flexibleSize o s
+sizeHint o (Line n)           = return $ flexibleSize o n
+sizeHint o (Adjustable _ _ w) = sizeHint o w
 
 sizeHint o (Margin (l, t, r, b) w) = do
   sh <- sizeHint o w
   return $ increase sh (l + r) (t + b)
 
 sizeHint o (Custom bh) = sizeHintFcn bh o
+
 
 flexibleSize :: Orientation -> Int -> Size
 flexibleSize o s | o == Vertical   = Size 0 s
@@ -66,52 +74,7 @@ getSizeHint :: (MonadSurface m) =>
                Orientation -> LayoutItem i m -> m Size
 getSizeHint o (LayoutItem _ wgt _) = sizeHint o wgt
 
-
-is :: SizePolicy -> (LayoutItem i m, Size, SizePolicy) -> Bool
-is p (_, _, pcy) = pcy == p
-
-type LayoutData i m = (LayoutItem i m, Size, SizePolicy)
-
-totalLen :: (Size -> Int) -> [LayoutData i m] -> Int
-totalLen acc = foldl' cnt 0 where cnt t (_, sz, _) = t + acc sz
-
-
-calcBoxLayout :: Eq i
-                 => [LayoutData i m]     -- subject widgets and its data
-                 -> Int                  -- base axis value
-                 -> Int                  -- available size element
-                 -> (Size -> Int)        -- counted size element accessor
-                 -> (Int -> Int -> Rect) -- rect builder function
-                 -> [LayoutItem i m]
-calcBoxLayout items base availLen cntAcc buildRect =
-    let fixs = filter (is Fixed)     items
-        mins = filter (is Minimum)   items
-        exps = filter (is Expanding) items
-        rects =
-          if null exps
-          then
-            -- No Expanding elements, divide the available area
-            -- between the (Minimum) items
-            let minlen  = (availLen - totalLen cntAcc fixs) `div` length mins
-                lensfcn = (\(_, sz, p) -> if p == Fixed then cntAcc sz else minlen)
-                lens    = map lensfcn items
-                axs     = scanl (+) base lens
-            in map (\(offset, len) -> buildRect offset len) $ zip axs lens
-          else
-            -- Calculate size required for the items with the
-            -- Minimum and Fixed policies, divide the rest between the
-            -- Expanding elements
-            let rqLen = totalLen cntAcc $ mins ++ fixs
-                exLen = div (availLen - rqLen) $ length exps
-                ols   = reverse $ fst $ foldl' (accumOLs exLen) ([], base) items
-            in map (\(offset, len) -> buildRect offset len) ols
-      in map (\(rc, (li, _, _)) -> setRect li rc) $ zip rects items
-  where
-    accumOLs exLen (ols, offset) (_, sz, pcy) =
-      let len = if pcy == Expanding then exLen else cntAcc sz
-      in ((offset, len) : ols, offset + len)
-
-
+ 
 updateLayouts :: (MonadSurface m, Eq i)
                  => [LayoutItem i m]
                  -> m [LayoutItem i m]
@@ -121,6 +84,49 @@ updateLayouts items =
     return $ LayoutItem i w' rc
   
 
+calcLens :: [(Int, SizePolicy)] -> Int -> [Int]
+calcLens lpcs avail =
+    let fixs = filter (is Fixed)     lpcs
+        mins = filter (is Minimum)   lpcs
+        exps = filter (is Expanding) lpcs
+    in if null exps
+       then
+         -- No Expanding elements, divide the available area
+         -- between the (Minimum) items
+         let minlen = (avail - len fixs) `div` length mins
+             lfcn (l, p) = if p == Fixed then l else minlen
+         in map lfcn lpcs
+       else
+         -- Calculate size required for the items with the
+         -- Minimum and Fixed policies, divide the rest between the
+         -- Expanding elements
+         let rqlen       = len $ mins ++ fixs
+             exlen       = div (avail - rqlen) $ length exps
+             lfcn (l, p) = if p == Expanding then exlen else l
+         in map lfcn lpcs
+  where is p (_, pcy) = pcy == p
+        len items = sum $ map fst items
+       
+
+updateBoxLayout :: (MonadSurface m, Eq i)
+                => [LayoutItem i m]
+                -> Int
+                -> Int
+                -> Orientation
+                -> (Size -> Int)
+                -> ((SizePolicy, SizePolicy) -> SizePolicy)
+                -> (Int -> Int -> Rect)
+                -> m [LayoutItem i m]
+updateBoxLayout items base avail ori accSz accPcy buildRect = do
+  hints <- mapM (liftM accSz . getSizeHint ori) items
+  let pcys  = map accPcy $ map (sizePolicy ori . widget) items
+      lens  = calcLens (zip hints pcys) avail
+      offs  = scanl (+) base lens
+      calcd = for (zip3 offs lens items) $ \(o, l, item) ->
+        setRect item $ buildRect o l
+  updateLayouts calcd >>= return
+  
+
 updateLayout :: (MonadSurface m, Eq i)
                 => Widget i m
                 -> Int
@@ -128,27 +134,43 @@ updateLayout :: (MonadSurface m, Eq i)
                 -> Size
                 -> m (Widget i m)
 
-updateLayout (VBox items) baseX baseY (Size availW availH) = do
-  sizes <- mapM (getSizeHint Vertical) items
-  let policies = map fst $ map (sizePolicy' Vertical) items
-      calcInfo = zip3 items sizes policies
-      szHeight (Size _ h) = h
-      bldRC y height = Rect baseX y $ Size availW height
-      calcd = calcBoxLayout calcInfo baseY availH szHeight bldRC
-  items' <- updateLayouts calcd
-  return $ VBox items'
+updateLayout (VBox items) baseX baseY (Size availW availH) =
+    updateBoxLayout items baseY availH Vertical szHeight fst bRect >>= (return . VBox)
+  where bRect o l = Rect baseX o $ Size availW l
 
 updateLayout (HBox items) baseX baseY (Size availW availH) = do
-  sizes <- mapM (getSizeHint Horizontal) items
-  let policies = map snd $ map (sizePolicy' Horizontal) items
-      calcInfo = zip3 items sizes policies
-      szWidth (Size w _) = w
-      bldRC x width = Rect x baseY $ Size width availH
-      calcd = calcBoxLayout calcInfo baseX availW szWidth bldRC
-  items' <- updateLayouts calcd
-  return $ HBox items'
+    updateBoxLayout items baseX availW Horizontal szWidth snd bRect >>= (return . HBox)
+  where bRect o l = Rect o baseY $ Size l availH
 
-updateLayout (Compact cw) x y sz = liftM Compact $ updateLayout cw x y sz
+updateLayout (Table iss) baseX baseY (Size availW availH) = do
+    whints <- mapmapM (liftM szWidth  . getSizeHint Horizontal) iss
+    hhints <- mapmapM (liftM szHeight . getSizeHint Vertical)   iss
+
+    let vpcys = mapmap (fst . sizePolicy Vertical   . widget) iss
+        hpcys = mapmap (snd . sizePolicy Horizontal . widget) iss
+        rpcys = map inferPolicy vpcys
+        cpcys = map inferPolicy $ transpose hpcys
+
+        whints' = map maximum $ transpose whints
+        hhints' = map maximum hhints
+
+        widths  = calcLens (zip whints' cpcys) availW
+        heights = calcLens (zip hhints' rpcys) availH
+        xs      = scanl (+) baseX widths
+        ys      = scanl (+) baseY heights
+        
+        calcd   = for (zip3 ys heights iss) $ \(y, h, is) ->
+          for (zip3 xs widths is) $ \(x, w, li) ->
+            setRect li $ Rect x y $ Size w h
+            
+    mapM updateLayouts calcd >>= (return . Table)
+
+  where inferPolicy pcys | Expanding `elem` pcys = Expanding
+                         | all (== Fixed) pcys   = Fixed
+                         | otherwise             = Minimum
+
+updateLayout (Adjustable v h w) x y sz =
+  liftM (Adjustable v h) $ updateLayout w x y sz
 
 updateLayout (Margin m@(l, t, r, b) w) x y sz = do
   let newSize = decrease sz (l + r) (t + b)

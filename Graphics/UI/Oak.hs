@@ -343,12 +343,13 @@ renderBox is = do
 render' :: (MonadFrontend u m, MonadSurface m, Eq i) =>
            Widget i m -> WidgetState -> Rect -> OakT i u w m ()
 render' w st rc = case w of
-  (VBox items)  -> renderBox items
-  (HBox items)  -> renderBox items
-  (Margin mr w) -> render' w st $ nadjust rc mr
-  (Compact cw)  -> render' cw Normal rc
-  (Custom bh)   -> lift $ renderFcn bh st rc
-  otherwise     -> lift $ render w st rc
+  (VBox items)       -> renderBox items
+  (HBox items)       -> renderBox items
+  (Table iss)        -> mapM_ renderBox iss
+  (Margin mr w)      -> render' w st $ nadjust rc mr
+  (Adjustable _ _ w) -> render' w Normal rc
+  (Custom bh)        -> lift $ renderFcn bh st rc
+  otherwise          -> lift $ render w st rc
 
 
 repaint :: (MonadFrontend u m, MonadSurface m, Eq i)

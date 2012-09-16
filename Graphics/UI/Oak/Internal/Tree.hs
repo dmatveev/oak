@@ -40,10 +40,11 @@ lookupWidget i w = findIn $ boxItems w
 updateInTree :: Eq i =>
                 i -> (Widget i m -> Widget i m) -> Widget i m -> Widget i m
 updateInTree i f w = case w of
-    (HBox items)  -> HBox $ map upd items
-    (VBox items)  -> VBox $ map upd items
-    (Compact cw)  -> Compact $ updateInTree i f cw
-    (Margin m mw) -> Margin m $ updateInTree i f mw
+    (HBox items)        -> HBox $ map upd items
+    (VBox items)        -> VBox $ map upd items
+    (Adjustable v h cw) -> Adjustable v h $ updateInTree i f cw
+    (Margin m mw)       -> Margin m $ updateInTree i f mw
+    (Table iss)         -> Table $ map (map upd) iss
     otherwise -> w
   where upd li@(LayoutItem n wgt _)
           | n == i    = modWidget li f

@@ -15,8 +15,13 @@ module Graphics.UI.Oak.Widgets
        , boxItems
        , sizePolicy
 
+       , compact
+       , hexpand
+       , vexpand
+         
        , vbox
        , hbox
+       , table
 
        , vcenter
        , hcenter
@@ -28,8 +33,9 @@ module Graphics.UI.Oak.Widgets
        , dialog
        ) where
 
-import Graphics.UI.Oak.Basics
+import Data.Maybe (fromMaybe)
 
+import Graphics.UI.Oak.Basics
 
 class Identifier a where
   unused       :: a
@@ -63,13 +69,17 @@ instance Eq (WidgetBehavior m) where
 
 data Widget i m = VBox [LayoutItem i m]
                 | HBox [LayoutItem i m]
+                | Table [[LayoutItem i m]]
                 | Label String
                 | Button String
                 | Edit String Int
                 | Stretch
                 | Space Int
                 | Line Int
-                | Compact (Widget i m)
+                | Adjustable
+                  (Maybe (SizePolicy, SizePolicy))
+                  (Maybe (SizePolicy, SizePolicy))
+                  (Widget i m)
                 | Margin (Int, Int, Int, Int) (Widget i m)
                 | Custom (WidgetBehavior m)
                   deriving (Eq, Show)
@@ -77,12 +87,23 @@ data Widget i m = VBox [LayoutItem i m]
 data SizePolicy = Fixed | Minimum | Expanding
                   deriving (Eq, Show)
 
+compact :: Widget i m -> Widget i m
+compact = Adjustable c c where c = Just (Minimum, Minimum)
+
+hexpand :: Widget i m -> Widget i m
+hexpand = Adjustable Nothing $ Just (Expanding, Expanding)
+
+vexpand :: Widget i m -> Widget i m
+vexpand = Adjustable (Just (Expanding, Expanding)) Nothing
 
 vbox :: [(i, Widget i m)] -> Widget i m
 vbox ws = VBox $ items ws
 
 hbox :: [(i, Widget i m)] -> Widget i m
 hbox ws = HBox $ items ws
+
+table :: [[(i, Widget i m)]] -> Widget i m
+table wss = Table $ map items wss
 
 items :: [(i, Widget i m)] -> [LayoutItem i m]
 items = map (\(i, w) -> LayoutItem i w (Rect 0 0 (Size 0 0)))
@@ -104,7 +125,7 @@ center :: Identifier i => (i, Widget i m) -> Widget i m
 center p = vcenter (unused, hcenter p)
 
 header :: Identifier i => String -> Widget i m
-header s = Compact $ vbox [ (unused, Label s)
+header s = compact $ vbox [ (unused, Label s)
                           , (unused, Line 3)
                           ]
 
@@ -124,46 +145,47 @@ dialog title buttons contents =
 
 
 isBox :: Widget i m -> Bool
-isBox (HBox _)     = True
-isBox (VBox _)     = True
-isBox (Compact _)  = True
-isBox (Margin _ _) = True
-isBox _            = False
+isBox (HBox _)            = True
+isBox (VBox _)            = True
+isBox (Table _)           = True
+isBox (Adjustable _ _ _)  = True
+isBox (Margin _ _)        = True
+isBox _                   = False
 
 boxItems :: Widget i m -> [LayoutItem i m]
-boxItems (HBox is)    = is
-boxItems (VBox is)    = is
-boxItems (Compact w)  = boxItems w
-boxItems (Margin _ w) = boxItems w
-boxItems _ = []
+boxItems (HBox is)           = is
+boxItems (VBox is)           = is
+boxItems (Table iss)         = concat iss
+boxItems (Adjustable _ _ w)  = boxItems w
+boxItems (Margin _ w)        = boxItems w
+boxItems _                   = []
 
 acceptsFocus :: Monad m => Widget i m -> Bool
-acceptsFocus (VBox _)     = False
-acceptsFocus (HBox _)     = False
-acceptsFocus (Label _)    = False
 acceptsFocus (Button _)   = True
 acceptsFocus (Edit _ _)   = True
-acceptsFocus (Space _)    = False
-acceptsFocus (Line _)     = False
-acceptsFocus Stretch      = False
-acceptsFocus (Compact _)  = False
-acceptsFocus (Margin _ _) = False
 acceptsFocus (Custom bh)  = accFocusFcn bh
+acceptsFocus _            = False
+
 
 -- Returns a (vertical, horizontal) size policies
 sizePolicy :: Monad m =>
               Orientation -> Widget i m -> (SizePolicy, SizePolicy)
 sizePolicy _ (VBox _)     = (Expanding, Minimum)
 sizePolicy _ (HBox _)     = (Minimum,   Expanding)
+sizePolicy _ (Table _)    = (Expanding, Expanding)
 sizePolicy _ (Label _)    = (Minimum,   Minimum)
 sizePolicy _ (Button _)   = (Minimum,   Minimum)
 sizePolicy _ (Edit _ _ )  = (Minimum,   Expanding)
 sizePolicy o (Space _)    = flexiblePolicy o
 sizePolicy o (Line _)     = flexiblePolicy o
 sizePolicy _ Stretch      = (Expanding, Expanding)
-sizePolicy _ (Compact _)  = (Minimum,   Minimum)
 sizePolicy o (Margin _ w) = sizePolicy o w
 sizePolicy o (Custom bh)  = sizePcyFcn bh o
+
+sizePolicy o (Adjustable v h w)
+  | o == Vertical   = fromMaybe orig v
+  | o == Horizontal = fromMaybe orig h
+  where orig = sizePolicy o w
 
 flexiblePolicy :: Orientation -> (SizePolicy, SizePolicy)
 flexiblePolicy o | o == Vertical   = (Fixed, Expanding)

@@ -54,7 +54,7 @@ messageBoxHandlers = map mkHandler msgTable
 
 inputDialog :: String -> String -> Widget MsgId m
 inputDialog title text = dialog title btns (Unused, contents)
-  where contents = center (Unused, Compact $
+  where contents = center (Unused, compact $
                            vbox [ (Unused,   Label text)
                                 , (EdtEntry, Edit "" 0)
                                 ]
