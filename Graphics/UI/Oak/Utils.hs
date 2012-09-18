@@ -12,8 +12,6 @@ module Graphics.UI.Oak.Utils
        , push
        , pop
 
-       , currentSeconds
-
        , mapmap
        , mapmapM
        , for
@@ -22,7 +20,6 @@ module Graphics.UI.Oak.Utils
 import Control.Monad (MonadPlus, mplus, mzero, mapM)
 import Data.Maybe (fromMaybe)
 import Data.List (find, foldl')
-import System.Time (ClockTime(..), getClockTime)
 
 
 nextAfter' :: (Eq a) => a -> (a -> Bool) -> [a] -> a
@@ -58,12 +55,6 @@ push a (Stack as) = Stack (a : as)
 pop :: Stack a -> (Maybe a, Stack a)
 pop (Stack [])     = (Nothing, Stack [])
 pop (Stack (a:as)) = (Just a, Stack as)
-
-
-currentSeconds :: IO Integer
-currentSeconds = do
-  (TOD sec _) <- getClockTime
-  return sec
 
 
 mapmap :: (a -> b) -> [[a]] -> [[b]]

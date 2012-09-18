@@ -70,7 +70,6 @@ instance (MonadFrontend u m, MonadSurface m,
           Identifier i, Eq i, Show i) =>
          MonadHandler i w m (OakT i u w m) where
   hlift  = hliftOak
-  now    = nowOak
   alter  = alterOak
   open   = openOak
   answer = answerOak
@@ -86,11 +85,6 @@ instance (MonadFrontend u m, MonadSurface m,
 hliftOak :: (MonadFrontend u m, MonadSurface m) =>
             m a -> OakT i u w m a
 hliftOak act = lift act >>= return
-
-
-nowOak :: (MonadFrontend u m, MonadSurface m, Eq i) =>
-          OakT i u w m Integer
-nowOak = liftIO currentSeconds
 
 
 alterOak :: (MonadFrontend u m, MonadSurface m,

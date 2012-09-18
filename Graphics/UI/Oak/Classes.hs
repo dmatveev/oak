@@ -30,7 +30,7 @@ class (Monad m, MonadIO m) => MonadFrontend u m | m -> u where
 class (Monad m, MonadIO m, Identifier i, Eq i, Show i) =>
       MonadHandler i w mh m | m -> i, m -> mh, m -> w where
   hlift  :: mh a -> m a
-  now    :: m Integer
+
   alter  :: i -> (Widget i mh -> Widget i mh) -> m ()
   open   :: Widget i mh -> m ()
   answer :: w -> m ()
