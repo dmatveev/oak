@@ -14,8 +14,10 @@ import Graphics.UI.Oak.Widgets
 
 
 class (Monad m) => MonadSurface m where
-  textSize :: String -> m Size
-  surfSize :: m Size
+  textSize     :: String -> m Size
+  surfSize     :: m Size
+  buttonExtent :: m (Int, Int)
+  editExtent   :: m (Int, Int)
 
 class (Monad m, MonadIO m) => MonadFrontend u m | m -> u where
   initialize :: m ()
@@ -27,7 +29,7 @@ class (Monad m, MonadIO m) => MonadFrontend u m | m -> u where
   render :: Widget i m -> WidgetState -> Rect -> m ()
   endIter :: m ()
 
-class (Monad m, MonadIO m, Identifier i, Eq i, Show i) =>
+class (Monad m, MonadIO m, Identifier i) =>
       MonadHandler i w mh m | m -> i, m -> mh, m -> w where
   hlift  :: mh a -> m a
 

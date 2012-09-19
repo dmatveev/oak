@@ -26,9 +26,11 @@ sizePolicy' o (LayoutItem _ w _) = sizePolicy o w
 sizeHint :: (MonadSurface m) => Orientation -> Widget i m -> m Size
 sizeHint _ (Label s)  = textSize s
 sizeHint _ (Button s) = do sz <- textSize s
-                           return $ increase sz 5 5
+                           (dw, dh) <- buttonExtent
+                           return $ increase sz dw dh
 sizeHint _ (Edit s _) = do sz <- textSize (if null s then " " else s)
-                           return $ increase sz 7 7
+                           (dw, dh) <- editExtent
+                           return $ increase sz dw dh
 sizeHint _ Stretch = return $ Size 0 0
 
 sizeHint _ (VBox items) = do

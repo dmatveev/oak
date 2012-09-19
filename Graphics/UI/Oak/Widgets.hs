@@ -37,7 +37,7 @@ import Data.Maybe (fromMaybe)
 
 import Graphics.UI.Oak.Basics
 
-class Identifier a where
+class (Eq a, Show a) => Identifier a where
   unused       :: a
   btnBack      :: a
 
