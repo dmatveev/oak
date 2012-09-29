@@ -160,6 +160,8 @@ oakCont = do
   hs <- ask
   u <- lift ownData
   r <- lift runFcn
+  -- warning! It seems that the frontend's own data (u) changes
+  -- will be eventloop-local.
   mnw <- liftIO $ eventLoop st hs u r
   tell $ Last mnw
   return ()
