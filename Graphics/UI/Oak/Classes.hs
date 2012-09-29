@@ -5,8 +5,10 @@ module Graphics.UI.Oak.Classes
          MonadSurface(..)
        , MonadFrontend(..)
        , MonadHandler(..)
+       , MonadUserState(..)
        ) where
 
+import Control.Monad (liftM)
 import Control.Monad.Trans
 
 import Graphics.UI.Oak.Basics
@@ -43,3 +45,15 @@ class (Monad m, MonadIO m, Identifier i) =>
 
   msgBox :: String -> String -> [MessageCode] -> m (Maybe MessageCode)
   inputBox :: String -> String -> m (Maybe String)
+
+
+class (Monad m) => MonadUserState us m | m -> us where
+  usGet   :: m us
+  usPut   :: us -> m ()
+  
+  usGets  :: (us -> a) -> m a
+  usGets f = usGet >>= \a -> return (f a)
+
+  usMod   :: (us -> us) -> m ()
+  usMod f = usGet >>= \a -> usPut (f a)
+
