@@ -1,0 +1,27 @@
+Oak: a tiny and almost abstract Haskell widget set
+-----------------------------------------------------------------
+
+With Oak you can declare the application's UI and set up event
+handlers. Then the UI can be rendered and run using a concrete
+frontend (i.e., SDL).
+
+Current functionality:
+ - layout support;
+ - focus handling;
+ - event loop;
+ - window stacks;
+ - modal dialogs via call/answer.
+
+The example application built with Oak is Jewelry game:
+
+  http://github.com/dmatveev/jewelry
+
+Depends on the "mutators" package:
+
+  http://github.com/dmatveev/mutators
+
+Installation:
+
+  runhaskell Setup.hs configure
+  runhaskell Setup.hs build
+  runhaskell Setup.hs install
